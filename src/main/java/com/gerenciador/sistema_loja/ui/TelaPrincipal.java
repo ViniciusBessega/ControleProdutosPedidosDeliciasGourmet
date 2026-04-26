@@ -14,6 +14,10 @@ import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
+import javafx.animation.ScaleTransition;
+import javafx.util.Duration;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -164,8 +168,6 @@ public class TelaPrincipal {
         tracejado.setPadding(new Insets(6, 15, 2, 15));
 
         Button btnFinalizar = BotaoFactory.primario("Finalizar Pedido");
-        Button btnEditarPedido = BotaoFactory.secundario("Editar Pedido");
-
         btnFinalizar.setOnAction(e -> {
             if (carrinhoService.getItens().isEmpty()) {
                 new Alert(Alert.AlertType.WARNING, "Carrinho vazio").show();
@@ -176,9 +178,11 @@ public class TelaPrincipal {
             atualizarCarrinho(listaCarrinho, totalLabel);
         });
 
+        Button btnEditarPedido = BotaoFactory.secundario("Editar Pedido");
         btnEditarPedido.setOnAction(e ->
-                new Alert(Alert.AlertType.INFORMATION, "Em breve: edição de pedido!").show()
+                mostrarPopupEditarPedido(listaCarrinho, totalLabel)
         );
+
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -313,5 +317,335 @@ public class TelaPrincipal {
         }
 
         totalLabel.setText("TOTAL: R$ " + total.setScale(2, RoundingMode.HALF_UP));
+    }
+
+    private void mostrarPopupEditarPedido(VBox listaCarrinho, Label totalLabel) {
+
+        // ── CARD ──────────────────────────────────────────────
+        VBox popup = new VBox(12);
+        popup.setPadding(new Insets(20));
+        popup.setMaxWidth(420);
+        popup.setStyle("""
+        -fx-background-color: white;
+        -fx-background-radius: 15;
+        -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 20, 0, 0, 6);
+    """);
+        popup.setMaxHeight(520);
+        popup.setPrefHeight(Region.USE_COMPUTED_SIZE);
+
+        // ── LISTA DE ITENS ────────────────────────────────────
+        VBox listaPopup = new VBox(6);
+
+        // mapa mutável de quantidades locais para edição
+        java.util.Map<Long, javafx.beans.property.SimpleIntegerProperty> qtdMap = new java.util.HashMap<>();
+        java.util.Map<Long, javafx.beans.property.SimpleObjectProperty<BigDecimal>> precoMap = new java.util.HashMap<>();
+
+        for (var entry : carrinhoService.getItens().entrySet()) {
+            Long id = entry.getKey();
+            Produto p = carrinhoService.getProduto(id);
+
+            BigDecimal precoUnit = BigDecimal.ZERO;
+            if (p instanceof ProdutoSimples ps) precoUnit = ps.getPreco();
+            else if (p instanceof Torta t)      precoUnit = t.getPrecoPorKg();
+
+            qtdMap.put(id, new javafx.beans.property.SimpleIntegerProperty(entry.getValue()));
+            precoMap.put(id, new javafx.beans.property.SimpleObjectProperty<>(precoUnit));
+        }
+
+        // label total do popup — declarado antes para callbacks atualizarem
+        Label totalPopupLabel = new Label();
+        totalPopupLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 15px;");
+
+        // campo desconto
+        TextField campoDesconto = new TextField("0");
+        campoDesconto.setStyle("""
+        -fx-background-radius: 8;
+        -fx-border-radius: 8;
+        -fx-border-color: #ffd1dc;
+        -fx-padding: 8 12;
+        -fx-font-size: 13px;
+    """);
+        campoDesconto.setEditable(false);
+
+        // referência ao botão editar para os callbacks
+        Button[] btnEditarRef = new Button[1];
+
+        Label lblSubtotalBruto = new Label("");
+        lblSubtotalBruto.setStyle("-fx-font-size: 12px; -fx-text-fill: #aaa; -fx-strikethrough: true;");
+        lblSubtotalBruto.managedProperty().bind(lblSubtotalBruto.visibleProperty());
+        lblSubtotalBruto.setVisible(false);
+
+        Label lblDescontoValor = new Label("");
+        lblDescontoValor.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
+        lblDescontoValor.managedProperty().bind(lblDescontoValor.visibleProperty());
+        lblDescontoValor.setVisible(false);
+
+        // ── RECALCULAR TOTAL ──────────────────────────────────
+        Runnable recalcular = () -> {
+            BigDecimal subtotalGeral = BigDecimal.ZERO;
+            for (Long id : qtdMap.keySet()) {
+                int q = qtdMap.get(id).get();
+                BigDecimal pu = precoMap.get(id).get();
+                subtotalGeral = subtotalGeral.add(pu.multiply(BigDecimal.valueOf(q)));
+            }
+
+            BigDecimal desconto = BigDecimal.ZERO;
+            try {
+                desconto = new BigDecimal(campoDesconto.getText().replace(",", "."));
+            } catch (Exception ignored) {}
+
+            BigDecimal valorDesc = subtotalGeral
+                    .multiply(desconto)
+                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+
+            BigDecimal totalFinal = subtotalGeral.subtract(valorDesc).setScale(2, RoundingMode.HALF_UP);
+
+            if (valorDesc.compareTo(BigDecimal.ZERO) > 0) {
+                lblSubtotalBruto.setText("Total: R$ " + subtotalGeral.setScale(2, RoundingMode.HALF_UP));
+                lblSubtotalBruto.setVisible(true);
+                lblDescontoValor.setText("Desconto: R$ " + valorDesc.setScale(2, RoundingMode.HALF_UP));
+                lblDescontoValor.setVisible(true);
+            } else {
+                lblSubtotalBruto.setVisible(false);
+                lblDescontoValor.setVisible(false);
+            }
+
+            totalPopupLabel.setText("TOTAL: R$ " + totalFinal);
+        };
+
+        // ── CONSTRUIR LINHAS ──────────────────────────────────
+        Runnable construirLinhas = null; // declarado para referência circular
+        // usamos array trick
+        Runnable[] construirLinhasRef = new Runnable[1];
+
+        construirLinhasRef[0] = () -> {
+            listaPopup.getChildren().clear();
+
+            for (Long id : new java.util.ArrayList<>(qtdMap.keySet())) {
+                Produto p = carrinhoService.getProduto(id);
+
+                javafx.beans.property.SimpleIntegerProperty qtdProp = qtdMap.get(id);
+                javafx.beans.property.SimpleObjectProperty<BigDecimal> precoProp = precoMap.get(id);
+
+                // quantidade
+                Label lblQtd = new Label(String.valueOf(qtdProp.get()));
+                lblQtd.setStyle("""
+                        -fx-font-size: 12px;
+                        -fx-font-weight: bold;
+                        -fx-min-width: 18;
+                        -fx-alignment: center;
+                """);
+
+                Button btnMenos = new Button("-");
+                                btnMenos.setStyle("""
+                    -fx-background-color: #6c757d;
+                    -fx-text-fill: white;
+                    -fx-background-radius: 15;
+                    -fx-padding: 4 12;
+                    -fx-font-weight: bold;
+                    -fx-cursor: hand;
+                """);
+
+                Button btnMais = new Button("+");
+                btnMais.setStyle("""
+                    -fx-background-color: #ff4d6d;
+                    -fx-text-fill: white;
+                    -fx-background-radius: 15;
+                    -fx-padding: 4 12;
+                    -fx-font-weight: bold;
+                    -fx-cursor: hand;
+                """);
+
+                // subtotal da linha
+                BigDecimal subInicial = precoProp.get().multiply(BigDecimal.valueOf(qtdProp.get()));
+                Label lblSub = new Label("R$ " + subInicial.setScale(2, RoundingMode.HALF_UP));
+                lblSub.setStyle("""
+                    -fx-font-size: 12px;
+                    -fx-font-weight: bold;
+                    -fx-text-fill: #333;
+                """);
+                lblSub.setPrefWidth(80);
+                lblSub.setMinWidth(80);
+                lblSub.setMaxWidth(80);
+                lblSub.setAlignment(Pos.CENTER_RIGHT);
+
+                // campo de preço (só editável quando modo edição ativo)
+                TextField campoPreco = new TextField(precoProp.get().setScale(2, RoundingMode.HALF_UP).toString());
+                campoPreco.setEditable(false);
+                campoPreco.setPrefWidth(70);
+                campoPreco.setMinWidth(70);
+                campoPreco.setMaxWidth(70);
+                campoPreco.setStyle("""
+                    -fx-background-radius: 6;
+                    -fx-border-radius: 6;
+                    -fx-border-color: transparent;
+                    -fx-padding: 4 6;
+                    -fx-font-size: 12px;
+                """);
+                // ao editar preço manualmente
+                campoPreco.textProperty().addListener((obs, o, n) -> {
+                    try {
+                        BigDecimal novoPreco = new BigDecimal(n.replace(",", "."));
+                        precoProp.set(novoPreco);
+                        BigDecimal sub = novoPreco.multiply(BigDecimal.valueOf(qtdProp.get()));
+                        lblSub.setText("R$ " + sub.setScale(2, RoundingMode.HALF_UP));
+                        recalcular.run();
+                    } catch (Exception ignored) {}
+                });
+
+                btnMais.setOnAction(ev -> {
+                    qtdProp.set(qtdProp.get() + 1);
+                    carrinhoService.getItens().put(id, qtdProp.get());
+                    lblQtd.setText(String.valueOf(qtdProp.get()));
+                    BigDecimal sub = precoProp.get().multiply(BigDecimal.valueOf(qtdProp.get()));
+                    lblSub.setText("R$ " + sub.setScale(2, RoundingMode.HALF_UP));
+                    recalcular.run();
+                    atualizarCarrinho(listaCarrinho, totalLabel);
+                });
+
+                btnMenos.setOnAction(ev -> {
+                    int atual = qtdProp.get();
+                    if (atual <= 1) {
+                        // pergunta se quer remover
+                        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+                        confirm.setHeaderText("Remover \"" + p.getNome() + "\"?");
+                        confirm.setContentText("Deseja retirar este produto do pedido?");
+                        confirm.showAndWait().ifPresent(resp -> {
+                            if (resp == ButtonType.OK) {
+                                carrinhoService.remover(p);
+                                qtdMap.remove(id);
+                                precoMap.remove(id);
+                                construirLinhasRef[0].run();
+                                recalcular.run();
+                                atualizarCarrinho(listaCarrinho, totalLabel);
+                            }
+                        });
+                    } else {
+                        qtdProp.set(atual - 1);
+                        carrinhoService.getItens().put(id, qtdProp.get());
+                        lblQtd.setText(String.valueOf(qtdProp.get()));
+                        BigDecimal sub = precoProp.get().multiply(BigDecimal.valueOf(qtdProp.get()));
+                        lblSub.setText("R$ " + sub.setScale(2, RoundingMode.HALF_UP));
+                        recalcular.run();
+                        atualizarCarrinho(listaCarrinho, totalLabel);
+                    }
+                });
+
+                HBox controle = new HBox(6, btnMenos, lblQtd, btnMais);
+                controle.setAlignment(Pos.CENTER);
+
+                Label lblNome = new Label(p.getNome());
+                lblNome.setStyle("-fx-font-size: 13px; -fx-text-fill: #333;");
+                HBox.setHgrow(lblNome, Priority.ALWAYS);
+
+                Region sp = new Region();
+                HBox.setHgrow(sp, Priority.ALWAYS);
+
+                HBox linha = new HBox(10, lblNome, controle, campoPreco, lblSub);
+                linha.setAlignment(Pos.CENTER_LEFT);
+                linha.setPadding(new Insets(6, 8, 6, 8));
+                linha.setStyle("""
+                    -fx-background-color: white;
+                    -fx-border-color: transparent transparent #f5f5f5 transparent;
+                    -fx-border-width: 0 0 1 0;
+                """);
+                linha.setUserData(campoPreco);
+
+                // guarda referência ao campoPreco para ativar edição depois
+                linha.setUserData(campoPreco);
+
+                listaPopup.getChildren().add(linha);
+            }
+
+            recalcular.run();
+        };
+
+        construirLinhasRef[0].run();
+
+        // ── DESCONTO ──────────────────────────────────────────
+        Label lblDesconto = new Label("Desconto (%)");
+        lblDesconto.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
+        campoDesconto.textProperty().addListener((obs, o, n) -> recalcular.run());
+
+        VBox blocoDesconto = new VBox(4, lblDesconto, campoDesconto);
+
+        // dispara cálculo inicial
+        recalcular.run();
+
+        // ── BOTÕES ────────────────────────────────────────────
+        Button btnEditar = BotaoFactory.secundario("Editar Valores");
+        Button btnOk     = BotaoFactory.primario("OK");
+        btnEditarRef[0]  = btnEditar;
+
+        // estado de edição
+        boolean[] modoEdicao = {false};
+
+        btnEditar.setOnAction(ev -> {
+            modoEdicao[0] = !modoEdicao[0];
+
+            // ativa/desativa campos de preço e desconto
+            campoDesconto.setEditable(modoEdicao[0]);
+            campoDesconto.setStyle(modoEdicao[0] ? """
+            -fx-background-radius: 8;
+            -fx-border-radius: 8;
+            -fx-border-color: #ff4d6d;
+            -fx-padding: 8 12;
+            -fx-font-size: 13px;
+        """ : """
+            -fx-background-radius: 8;
+            -fx-border-radius: 8;
+            -fx-border-color: #ffd1dc;
+            -fx-padding: 8 12;
+            -fx-font-size: 13px;
+        """);
+
+            for (var node : listaPopup.getChildren()) {
+                if (node instanceof HBox hb && hb.getUserData() instanceof TextField tf) {
+                    tf.setEditable(modoEdicao[0]);
+                    tf.setStyle(modoEdicao[0] ? """
+                    -fx-background-radius: 6;
+                    -fx-border-radius: 6;
+                    -fx-border-color: #ff4d6d;
+                    -fx-padding: 4 8;
+                    -fx-font-size: 13px;
+                    -fx-pref-width: 70;
+                """ : """
+                    -fx-background-radius: 6;
+                    -fx-border-radius: 6;
+                    -fx-border-color: transparent;
+                    -fx-padding: 4 8;
+                    -fx-font-size: 13px;
+                    -fx-pref-width: 70;
+                """);
+                }
+            }
+
+            btnEditar.setText(modoEdicao[0] ? "Concluir Edição" : "Editar Valores");
+        });
+
+        HBox botoes = new HBox(10, btnEditar, btnOk);
+        botoes.setAlignment(Pos.CENTER_RIGHT);
+
+        // ── MONTA POPUP ───────────────────────────────────────
+        popup.getChildren().addAll(listaPopup, blocoDesconto, lblSubtotalBruto, lblDescontoValor, totalPopupLabel, botoes);
+
+        // ── OVERLAY ───────────────────────────────────────────
+        StackPane overlay = new StackPane(popup);
+        overlay.setStyle("-fx-background-color: rgba(0,0,0,0.4);");
+        overlay.setAlignment(Pos.CENTER);
+        overlay.setPrefSize(Double.MAX_VALUE, Double.MAX_VALUE);
+
+        rootPrincipal.getChildren().add(overlay);
+
+        // ── ANIMAÇÃO (igual TelaDoces) ────────────────────────
+        popup.setScaleX(0);
+        popup.setScaleY(0);
+
+        ScaleTransition anim = new ScaleTransition(Duration.millis(200), popup);
+        anim.setToX(1);
+        anim.setToY(1);
+        anim.play();
+
+        btnOk.setOnAction(ev -> rootPrincipal.getChildren().remove(overlay));
     }
 }
