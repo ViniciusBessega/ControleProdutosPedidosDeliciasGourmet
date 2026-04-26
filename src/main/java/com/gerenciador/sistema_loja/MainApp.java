@@ -1,5 +1,6 @@
 package com.gerenciador.sistema_loja;
 
+import com.gerenciador.sistema_loja.service.CarrinhoService;
 import com.gerenciador.sistema_loja.service.ProdutoService;
 import com.gerenciador.sistema_loja.ui.TelaPrincipal;
 import javafx.application.Application;
@@ -27,8 +28,9 @@ public class MainApp extends Application {
         StackPane root = new StackPane();
 
         ProdutoService produtoService = context.getBean(ProdutoService.class);
+        CarrinhoService carrinhoService = context.getBean(CarrinhoService.class);
 
-        TelaPrincipal tela = new TelaPrincipal(root, produtoService);
+        TelaPrincipal tela = new TelaPrincipal(root, produtoService, carrinhoService);
 
         root.getChildren().setAll(tela.criarTela());
 

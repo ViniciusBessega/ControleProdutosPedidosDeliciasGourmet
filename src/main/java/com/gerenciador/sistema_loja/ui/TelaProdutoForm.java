@@ -3,6 +3,8 @@ package com.gerenciador.sistema_loja.ui;
 import com.gerenciador.sistema_loja.model.Produto;
 import com.gerenciador.sistema_loja.model.tiposproduto.ProdutoSimples;
 import com.gerenciador.sistema_loja.model.tiposproduto.Torta;
+import com.gerenciador.sistema_loja.model.tiposproduto.Categoria;
+import com.gerenciador.sistema_loja.service.CarrinhoService;
 import com.gerenciador.sistema_loja.service.ProdutoService;
 import com.gerenciador.sistema_loja.ui.util.BotaoFactory;
 import javafx.geometry.Insets;
@@ -18,40 +20,55 @@ public class TelaProdutoForm {
     private StackPane rootPrincipal;
     private ProdutoService service;
     private Produto produto; // null = novo
+    private CarrinhoService carrinhoService;
 
-    public TelaProdutoForm(StackPane rootPrincipal, ProdutoService service, Produto produto) {
+    public TelaProdutoForm(StackPane rootPrincipal, ProdutoService service, Produto produto, CarrinhoService carrinhoService) {
         this.rootPrincipal = rootPrincipal;
         this.service = service;
         this.produto = produto;
+        this.carrinhoService = carrinhoService;
     }
 
     public Parent criarTela() {
 
-        VBox root = new VBox(15);
-        root.setPadding(new Insets(20));
-        root.setStyle("-fx-background-color: #ffe4ec;");
-        root.setAlignment(Pos.TOP_CENTER);
-        root.setMaxWidth(400);
+        // 🔹 CONTAINER (TELA TODA)
+        StackPane container = new StackPane();
+        container.setStyle("-fx-background-color: #ffe4ec;");
+        container.setAlignment(Pos.CENTER);
+
+        // 🔹 CARD CENTRAL
+        VBox card = new VBox(15);
+        card.setPadding(new Insets(25));
+        card.setMaxWidth(450);
+        card.setStyle("""
+            -fx-background-color: white;
+            -fx-background-radius: 15;
+            -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 15, 0, 0, 5);
+        """);
+        card.setMaxHeight(Region.USE_PREF_SIZE);
 
         // 🔙 VOLTAR
         Button btnVoltar = BotaoFactory.secundario("← Voltar");
+        btnVoltar.setOnAction(e -> voltar());
 
-        btnVoltar.setOnAction(e -> {
-            TelaGerenciarProdutos tela = new TelaGerenciarProdutos(rootPrincipal, service);
-            rootPrincipal.getChildren().setAll(tela.criarTela());
-        });
+        // 🔹 GRID (FORM PROFISSIONAL)
+        GridPane grid = new GridPane();
+        grid.setVgap(10);
+        grid.setHgap(10);
+        grid.setAlignment(Pos.CENTER);
+
 
         // 🔹 CAMPOS
-        TextField nome = new TextField();
-        nome.setPromptText("Nome");
 
         ComboBox<String> tipo = new ComboBox<>();
-        tipo.getItems().addAll("Doce/Salgado", "Torta");
-        tipo.setValue("Doce/Salgado");
-        tipo.setStyle("""
-            -fx-background-radius: 10;
-            -fx-padding: 5;
-        """);
+        tipo.getItems().addAll("DOCE", "SALGADO", "TORTA");
+        tipo.setValue("DOCE");
+
+        TextArea nome = new TextArea();
+        nome.setPromptText("Nome");
+        nome.setWrapText(true);
+        nome.setPrefRowCount(1);
+        nome.setMaxHeight(60);
 
         TextField preco = new TextField();
         preco.setPromptText("Preço");
@@ -59,99 +76,175 @@ public class TelaProdutoForm {
         TextField precoKg = new TextField();
         precoKg.setPromptText("Preço por Kg");
 
-        TextField recheio = new TextField();
+        TextArea recheio = new TextArea();
         recheio.setPromptText("Recheio");
+        recheio.setWrapText(true);
+        recheio.setPrefRowCount(3);
 
-        nome.setMaxWidth(300);
-        tipo.setMaxWidth(300);
-        preco.setMaxWidth(300);
-        precoKg.setMaxWidth(300);
-        recheio.setMaxWidth(300);
+        // 🔹 LABELS
+        Label lblPreco = new Label("Preço");
+        Label lblPrecoKg = new Label("Preço por KG");
+        Label lblRecheio = new Label("Recheio");
+
+        // 🔥 CONTROLE DE LAYOUT (ESSENCIAL)
+        lblPreco.managedProperty().bind(lblPreco.visibleProperty());
+        preco.managedProperty().bind(preco.visibleProperty());
+
+        lblPrecoKg.managedProperty().bind(lblPrecoKg.visibleProperty());
+        precoKg.managedProperty().bind(precoKg.visibleProperty());
+
+        lblRecheio.managedProperty().bind(lblRecheio.visibleProperty());
+        recheio.managedProperty().bind(recheio.visibleProperty());
 
         // 🔹 VISIBILIDADE INICIAL
         precoKg.setVisible(false);
+        lblPrecoKg.setVisible(false);
         recheio.setVisible(false);
+        lblRecheio.setVisible(false);
 
         // 🔹 TROCA DE TIPO
         tipo.setOnAction(e -> {
-            if (tipo.getValue().equals("Doce/Salgado")) {
-                preco.setVisible(true);
-                precoKg.setVisible(false);
-                recheio.setVisible(false);
-            } else {
+
+            Categoria cat = Categoria.valueOf(tipo.getValue());
+
+            if (cat == Categoria.TORTA) {
                 preco.setVisible(false);
+                lblPreco.setVisible(false);
+
                 precoKg.setVisible(true);
+                lblPrecoKg.setVisible(true);
                 recheio.setVisible(true);
+                lblRecheio.setVisible(true);
+
+            } else {
+                preco.setVisible(true);
+                lblPreco.setVisible(true);
+
+                precoKg.setVisible(false);
+                lblPrecoKg.setVisible(false);
+                recheio.setVisible(false);
+                lblRecheio.setVisible(false);
             }
         });
 
-        // 🔥 SE FOR EDIÇÃO
+        // 🔹 TAMANHO PADRÃO
+        tipo.setMaxWidth(Double.MAX_VALUE);
+        nome.setMaxWidth(Double.MAX_VALUE);
+        preco.setMaxWidth(Double.MAX_VALUE);
+        precoKg.setMaxWidth(Double.MAX_VALUE);
+        recheio.setMaxWidth(Double.MAX_VALUE);
+
+        // 🔥 GRID POSIÇÕES
+        int row = 0;
+
+        // 🔹 CATEGORIA
+        Label lblCategoria = new Label("Categoria");
+        lblCategoria.setStyle("-fx-font-weight: bold;");
+        grid.add(lblCategoria, 0, row++);
+        grid.add(tipo, 0, row++);
+
+        // 🔹 NOME
+        Label lblNome = new Label("Nome");
+        lblNome.setStyle("-fx-font-weight: bold;");
+        grid.add(lblNome, 0, row++);
+        grid.add(nome, 0, row++);
+
+        // 🔹 PREÇO
+        lblPreco.setStyle("-fx-font-weight: bold;");
+        grid.add(lblPreco, 0, row++);
+        grid.add(preco, 0, row++);
+
+        // 🔹 PREÇO KG
+        lblPrecoKg.setStyle("-fx-font-weight: bold;");
+        grid.add(lblPrecoKg, 0, row++);
+        grid.add(precoKg, 0, row++);
+
+        // 🔹 RECHEIO
+        lblRecheio.setStyle("-fx-font-weight: bold;");
+        grid.add(lblRecheio, 0, row++);
+        grid.add(recheio, 0, row++);
+
+        grid.setMaxWidth(Double.MAX_VALUE);
+        GridPane.setHgrow(tipo, Priority.ALWAYS);
+        GridPane.setHgrow(nome, Priority.ALWAYS);
+        GridPane.setHgrow(preco, Priority.ALWAYS);
+        GridPane.setHgrow(precoKg, Priority.ALWAYS);
+        GridPane.setHgrow(recheio, Priority.ALWAYS);
+
+        // 🔥 EDIÇÃO
         if (produto != null) {
 
             nome.setText(produto.getNome());
+            tipo.setValue(produto.getCategoria().name());
 
             if (produto instanceof ProdutoSimples ps) {
-                tipo.setValue("Doce/Salgado");
                 preco.setText(ps.getPreco().toString());
-
-                preco.setVisible(true);
-                precoKg.setVisible(false);
-                recheio.setVisible(false);
             }
 
             if (produto instanceof Torta t) {
-                tipo.setValue("Torta");
                 precoKg.setText(t.getPrecoPorKg().toString());
                 recheio.setText(t.getRecheio());
 
-                preco.setVisible(false);
-                precoKg.setVisible(true);
-                recheio.setVisible(true);
+                tipo.setValue("TORTA");
+                tipo.getOnAction().handle(null); // 🔥 força atualização visual
             }
         }
 
         // 🔹 BOTÕES
         Button salvar = BotaoFactory.primario("Salvar");
-        Button cancelar = BotaoFactory.primario("Cancelar");
+        Button cancelar = BotaoFactory.secundario("Cancelar");
 
         salvar.setOnAction(e -> {
 
-            Produto p;
+            try {
+                Categoria categoriaSelecionada = Categoria.valueOf(tipo.getValue());
 
-            if (produto == null) {
-                // 🔹 NOVO
-                if (tipo.getValue().equals("Doce/Salgado")) {
-                    ProdutoSimples ps = new ProdutoSimples();
-                    ps.setNome(nome.getText());
-                    ps.setPreco(new BigDecimal(preco.getText()));
-                    p = ps;
+                Produto p;
+
+                if (produto == null) {
+
+                    if (categoriaSelecionada == Categoria.TORTA) {
+                        Torta t = new Torta();
+                        t.setNome(nome.getText());
+                        t.setPrecoPorKg(new BigDecimal(precoKg.getText().replace(",", ".")));
+                        t.setRecheio(recheio.getText());
+                        t.setCategoria(Categoria.TORTA);
+                        p = t;
+
+                    } else {
+                        ProdutoSimples ps = new ProdutoSimples();
+                        ps.setNome(nome.getText());
+                        ps.setPreco(new BigDecimal(preco.getText().replace(",", ".")));
+                        ps.setCategoria(categoriaSelecionada);
+                        p = ps;
+                    }
 
                 } else {
-                    Torta t = new Torta();
-                    t.setNome(nome.getText());
-                    t.setPrecoPorKg(new BigDecimal(precoKg.getText()));
-                    t.setRecheio(recheio.getText());
-                    p = t;
+
+                    p = produto;
+                    p.setNome(nome.getText());
+
+                    if (p instanceof ProdutoSimples ps) {
+                        ps.setPreco(new BigDecimal(preco.getText().replace(",", ".")));
+                        ps.setCategoria(categoriaSelecionada);
+                    }
+
+                    if (p instanceof Torta t) {
+                        t.setPrecoPorKg(new BigDecimal(precoKg.getText().replace(",", ".")));
+                        t.setRecheio(recheio.getText());
+                        t.setCategoria(Categoria.TORTA);
+                    }
                 }
 
-            } else {
-                // 🔹 EDIÇÃO
-                p = produto;
+                service.salvar(p);
+                voltar();
 
-                p.setNome(nome.getText());
-
-                if (p instanceof ProdutoSimples ps) {
-                    ps.setPreco(new BigDecimal(preco.getText()));
-                }
-
-                if (p instanceof Torta t) {
-                    t.setPrecoPorKg(new BigDecimal(precoKg.getText()));
-                    t.setRecheio(recheio.getText());
-                }
+            } catch (Exception ex) {
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setHeaderText("Erro ao salvar");
+                alert.setContentText(ex.getMessage());
+                alert.showAndWait();
             }
-
-            service.salvar(p);
-            voltar();
         });
 
         cancelar.setOnAction(e -> voltar());
@@ -159,22 +252,19 @@ public class TelaProdutoForm {
         HBox botoes = new HBox(10, salvar, cancelar);
         botoes.setAlignment(Pos.CENTER);
 
-        root.getChildren().addAll(
+        // 🔹 MONTA CARD
+        card.getChildren().addAll(
                 btnVoltar,
-                new Label("Produto"),
-                nome,
-                tipo,
-                preco,
-                precoKg,
-                recheio,
+                grid,
                 botoes
         );
 
-        return root;
+        container.getChildren().add(card);
+        return container;
     }
 
     private void voltar() {
-        TelaGerenciarProdutos tela = new TelaGerenciarProdutos(rootPrincipal, service);
+        TelaGerenciarProdutos tela = new TelaGerenciarProdutos(rootPrincipal, service, carrinhoService);
         rootPrincipal.getChildren().setAll(tela.criarTela());
     }
 }

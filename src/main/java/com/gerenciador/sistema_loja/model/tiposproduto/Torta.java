@@ -1,6 +1,7 @@
 package com.gerenciador.sistema_loja.model.tiposproduto;
 
 import com.gerenciador.sistema_loja.model.Produto;
+import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -13,6 +14,7 @@ import java.math.BigDecimal;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@DiscriminatorValue("TORTA")
 public class Torta extends Produto {
 
     private BigDecimal precoPorKg;

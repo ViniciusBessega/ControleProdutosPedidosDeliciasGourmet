@@ -11,6 +11,9 @@ import jakarta.persistence.*;
 @AllArgsConstructor
 @Getter
 @Setter
+@Inheritance(strategy = InheritanceType.SINGLE_TABLE)
+@DiscriminatorColumn (name = "tipo_produto")
+@DiscriminatorValue("PRODUTO")
 public abstract class Produto {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

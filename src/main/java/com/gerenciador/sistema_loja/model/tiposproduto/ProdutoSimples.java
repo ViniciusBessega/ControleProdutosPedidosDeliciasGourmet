@@ -1,6 +1,7 @@
 package com.gerenciador.sistema_loja.model.tiposproduto;
 
 import com.gerenciador.sistema_loja.model.Produto;
+import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -14,6 +15,7 @@ import java.math.BigDecimal;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@DiscriminatorValue("SIMPLES")
 public class ProdutoSimples extends Produto {
 
     private BigDecimal preco;

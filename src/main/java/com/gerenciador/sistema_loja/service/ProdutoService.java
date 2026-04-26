@@ -44,8 +44,12 @@ public class ProdutoService {
 
     // lista doces
     public List<ProdutoSimples> listarDoces() {
-        return produtoSimplesRepository.findByCategoria(Categoria.DOCE);
+        return produtoSimplesRepository.findByCategoria(Categoria.DOCE)
+                .stream()
+                .map(p -> (ProdutoSimples) p) // sem instanceof
+                .toList();
     }
+
 
     //lista salgados
     public List<ProdutoSimples> listarSalgados() {
