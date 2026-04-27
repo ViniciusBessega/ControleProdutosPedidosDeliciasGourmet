@@ -4,6 +4,8 @@ import com.gerenciador.sistema_loja.model.Produto;
 import com.gerenciador.sistema_loja.model.tiposproduto.ProdutoSimples;
 import com.gerenciador.sistema_loja.model.tiposproduto.Torta;
 import com.gerenciador.sistema_loja.service.CarrinhoService;
+import com.gerenciador.sistema_loja.service.PedidoPdfService;
+import com.gerenciador.sistema_loja.service.PedidoService;
 import com.gerenciador.sistema_loja.service.ProdutoService;
 import com.gerenciador.sistema_loja.ui.util.BotaoFactory;
 import javafx.collections.FXCollections;
@@ -22,14 +24,18 @@ public class TelaGerenciarProdutos {
     private StackPane rootPrincipal;
     private ProdutoService service;
     private CarrinhoService carrinhoService;
+    private PedidoService pedidoService;
+    private PedidoPdfService pedidoPdfService;
 
     private String filtroAtual = "TODOS";
     private String ordenacaoAtual = "Mais recente";
 
-    public TelaGerenciarProdutos(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService) {
+    public TelaGerenciarProdutos(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService, PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
         this.rootPrincipal = rootPrincipal;
         this.service = service;
         this.carrinhoService = carrinhoService;
+        this.pedidoService = pedidoService;
+        this.pedidoPdfService = pedidoPdfService;
     }
 
     public Parent criarTela() {
@@ -52,7 +58,7 @@ public class TelaGerenciarProdutos {
         // 🔙 VOLTAR
         Button btnVoltar = BotaoFactory.secundario("← Voltar");
         btnVoltar.setOnAction(e -> {
-            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService);
+            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
             rootPrincipal.getChildren().setAll(tela.criarTela());
         });
 
@@ -79,7 +85,7 @@ public class TelaGerenciarProdutos {
         // ➕ ADICIONAR
         Button btnAdicionar = BotaoFactory.primario("Adicionar Produto");
         btnAdicionar.setOnAction(e -> {
-            TelaProdutoForm tela = new TelaProdutoForm(rootPrincipal, service, null, carrinhoService);
+            TelaProdutoForm tela = new TelaProdutoForm(rootPrincipal, service, null, carrinhoService, pedidoService, pedidoPdfService);
             rootPrincipal.getChildren().setAll(tela.criarTela());
         });
 
@@ -174,7 +180,7 @@ public class TelaGerenciarProdutos {
                     Produto p = getTableRow().getItem();
 
                     if (p != null) {
-                        TelaProdutoForm tela = new TelaProdutoForm(rootPrincipal, service, p, carrinhoService);
+                        TelaProdutoForm tela = new TelaProdutoForm(rootPrincipal, service, p, carrinhoService, pedidoService, pedidoPdfService);
                         rootPrincipal.getChildren().setAll(tela.criarTela());
                     }
                 });

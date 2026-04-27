@@ -1,14 +1,21 @@
 package com.gerenciador.sistema_loja.ui;
 
+import com.gerenciador.sistema_loja.model.ItemPedido;
+import com.gerenciador.sistema_loja.model.Pedido;
 import com.gerenciador.sistema_loja.model.Produto;
 import com.gerenciador.sistema_loja.model.tiposproduto.ProdutoSimples;
 import com.gerenciador.sistema_loja.model.tiposproduto.Torta;
 import com.gerenciador.sistema_loja.service.CarrinhoService;
+import com.gerenciador.sistema_loja.service.PedidoPdfService;
+import com.gerenciador.sistema_loja.service.PedidoService;
 import com.gerenciador.sistema_loja.service.ProdutoService;
 import com.gerenciador.sistema_loja.ui.util.BotaoFactory;
+import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleObjectProperty;
+import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Cursor;
+import javafx.geometry.VPos;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
@@ -16,22 +23,31 @@ import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.animation.ScaleTransition;
 import javafx.util.Duration;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 
+import java.io.File;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import javafx.scene.control.ButtonBar;
+
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class TelaPrincipal {
 
     private ProdutoService produtoService;
     private StackPane rootPrincipal;
     private CarrinhoService carrinhoService;
+    private PedidoService pedidoService;
+    private PedidoPdfService pedidoPdfService;
 
-    public TelaPrincipal(StackPane rootPrincipal, ProdutoService produtoService, CarrinhoService carrinhoService) {
+    public TelaPrincipal(StackPane rootPrincipal, ProdutoService produtoService, CarrinhoService carrinhoService, PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
         this.rootPrincipal = rootPrincipal;
         this.produtoService = produtoService;
         this.carrinhoService = carrinhoService;
+        this.pedidoService = pedidoService;
+        this.pedidoPdfService = pedidoPdfService;
     }
 
     public Parent criarTela() {
@@ -58,19 +74,19 @@ public class TelaPrincipal {
 
         Button btnDoces = BotaoFactory.primario("Doces");
         btnDoces.setOnAction(e -> {
-            TelaDoces tela = new TelaDoces(rootPrincipal, produtoService, carrinhoService);
+            TelaDoces tela = new TelaDoces(rootPrincipal, produtoService, carrinhoService, pedidoService, pedidoPdfService);
             rootPrincipal.getChildren().setAll(tela.criarTela());
         });
 
         Button btnSalgados = BotaoFactory.primario("Salgados");
         btnSalgados.setOnAction(e -> {
-            TelaSalgados tela = new TelaSalgados(rootPrincipal, produtoService, carrinhoService);
+            TelaSalgados tela = new TelaSalgados(rootPrincipal, produtoService, carrinhoService, pedidoService, pedidoPdfService);
             rootPrincipal.getChildren().setAll(tela.criarTela());
         });
 
         Button btnTortas = BotaoFactory.primario("Tortas");
         btnTortas.setOnAction(e -> {
-            TelaTortas tela = new TelaTortas(rootPrincipal, produtoService, carrinhoService);
+            TelaTortas tela = new TelaTortas(rootPrincipal, produtoService, carrinhoService, pedidoService, pedidoPdfService);
             rootPrincipal.getChildren().setAll(tela.criarTela());
         });
 
@@ -79,14 +95,14 @@ public class TelaPrincipal {
         // 🔹 BOTÕES DIREITA empilhados, altura igual, centralizados verticalmente
         Button btnEditarProdutos = BotaoFactory.secundario("Editar/Adicionar Produtos");
         btnEditarProdutos.setOnAction(e -> {
-            TelaGerenciarProdutos tela = new TelaGerenciarProdutos(rootPrincipal, produtoService, carrinhoService);
+            TelaGerenciarProdutos tela = new TelaGerenciarProdutos(rootPrincipal, produtoService, carrinhoService, pedidoService, pedidoPdfService);
             rootPrincipal.getChildren().setAll(tela.criarTela());
         });
 
         Button btnPedidos = BotaoFactory.secundario("Pedidos");
         btnPedidos.setOnAction(e -> {
-            // futura tela de pedidos
-            new Alert(Alert.AlertType.INFORMATION, "Em breve: tela de pedidos!").show();
+            TelaPedidos tela = new TelaPedidos(rootPrincipal, produtoService, carrinhoService, pedidoService, pedidoPdfService);
+            rootPrincipal.getChildren().setAll(tela.criarTela());
         });
 
         // largura igual para os dois
@@ -159,7 +175,6 @@ public class TelaPrincipal {
         root.setCenter(scroll);
 
         // ── FOOTER FIXO ────────────────────────────────────
-        // separador tracejado
         Label tracejado = new Label(
                 "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
         );
@@ -167,31 +182,73 @@ public class TelaPrincipal {
         tracejado.setStyle("-fx-text-fill: #ccc; -fx-font-size: 10px;");
         tracejado.setPadding(new Insets(6, 15, 2, 15));
 
+        // labels de desconto no footer
+        Label footerSubtotalBruto = new Label("");
+        footerSubtotalBruto.setStyle("-fx-font-size: 12px; -fx-text-fill: #aaa; -fx-strikethrough: true;");
+        footerSubtotalBruto.managedProperty().bind(footerSubtotalBruto.visibleProperty());
+        footerSubtotalBruto.setVisible(false);
+
+        Label footerDesconto = new Label("");
+        footerDesconto.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
+        footerDesconto.managedProperty().bind(footerDesconto.visibleProperty());
+        footerDesconto.setVisible(false);
+
+        TextArea campoObservacao = new TextArea();
+        campoObservacao.setPromptText("Observações do pedido...");
+        campoObservacao.setWrapText(true);
+        campoObservacao.setPrefRowCount(2);
+        campoObservacao.setMaxHeight(60);
+        campoObservacao.setStyle("""
+            -fx-background-radius: 8;
+            -fx-border-radius: 8;
+            -fx-border-color: #ffd1dc;
+            -fx-padding: 6 10;
+            -fx-font-size: 11px;
+            -fx-control-inner-background: white;
+        """);
+        campoObservacao.setFocusTraversable(false);
+        VBox.setMargin(campoObservacao, new Insets(0, 15, 0, 15));
+
         Button btnFinalizar = BotaoFactory.primario("Finalizar Pedido");
         btnFinalizar.setOnAction(e -> {
             if (carrinhoService.getItens().isEmpty()) {
                 new Alert(Alert.AlertType.WARNING, "Carrinho vazio").show();
                 return;
             }
-            System.out.println("Pedido finalizado!");
-            carrinhoService.limpar();
-            atualizarCarrinho(listaCarrinho, totalLabel);
+            if (nomeCliente.getText().isBlank()) {
+                new Alert(Alert.AlertType.WARNING, "Informe o nome do cliente antes de finalizar.").show();
+                return;
+            }
+            mostrarPopupFinalizarPedido(nomeCliente.getText().trim(), listaCarrinho, totalLabel,
+                    footerSubtotalBruto, footerDesconto, nomeCliente, campoObservacao);
         });
 
         Button btnEditarPedido = BotaoFactory.secundario("Editar Pedido");
         btnEditarPedido.setOnAction(e ->
-                mostrarPopupEditarPedido(listaCarrinho, totalLabel)
+                mostrarPopupEditarPedido(listaCarrinho, totalLabel, footerSubtotalBruto, footerDesconto)
         );
-
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox footerLinha = new HBox(10, totalLabel, spacer, btnEditarPedido, btnFinalizar);
+        VBox infoTotal = new VBox(2, footerSubtotalBruto, footerDesconto, totalLabel);
+
+        HBox footerLinha = new HBox(10, infoTotal, spacer, btnEditarPedido, btnFinalizar);
         footerLinha.setAlignment(Pos.CENTER_LEFT);
         footerLinha.setPadding(new Insets(8, 15, 12, 15));
 
-        VBox footer = new VBox(0, tracejado, footerLinha);
+
+        Label lblCredito = new Label("Desenvolvido por Vinicius Bessega ©");
+        lblCredito.setStyle("""
+            -fx-font-size: 11px;
+            -fx-text-fill: #737171;
+        """);
+        lblCredito.setPadding(new Insets(0, 15, 4, 0));
+
+        HBox creditoBox = new HBox(lblCredito);
+        creditoBox.setAlignment(Pos.BOTTOM_RIGHT);
+
+        VBox footer = new VBox(2, campoObservacao, tracejado, footerLinha, creditoBox);
         footer.setStyle("""
             -fx-background-color: white;
             -fx-border-color: #e0e0e0 transparent transparent transparent;
@@ -202,6 +259,8 @@ public class TelaPrincipal {
 
         return root;
     }
+
+
 
     // ── GRID DE CABEÇALHO ─────────────────────────────────
     private GridPane criarHeaderGrid() {
@@ -231,6 +290,7 @@ public class TelaPrincipal {
         Label hQtd  = new Label("QTD");      hQtd.setStyle(estiloHeader);
         Label hUnit = new Label("UNIT.");     hUnit.setStyle(estiloHeader);
         Label hSub  = new Label("SUBTOTAL"); hSub.setStyle(estiloHeader);
+
 
         grid.add(hNome, 0, 0);
         grid.add(hQtd,  1, 0);
@@ -319,26 +379,23 @@ public class TelaPrincipal {
         totalLabel.setText("TOTAL: R$ " + total.setScale(2, RoundingMode.HALF_UP));
     }
 
-    private void mostrarPopupEditarPedido(VBox listaCarrinho, Label totalLabel) {
+    private void mostrarPopupEditarPedido(VBox listaCarrinho, Label totalLabel, Label footerSubtotalBruto, Label footerDesconto) {
 
-        // ── CARD ──────────────────────────────────────────────
-        VBox popup = new VBox(12);
-        popup.setPadding(new Insets(20));
-        popup.setMaxWidth(420);
-        popup.setStyle("""
-        -fx-background-color: white;
-        -fx-background-radius: 15;
-        -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 20, 0, 0, 6);
-    """);
-        popup.setMaxHeight(520);
+        // ── ESTRUTURA PRINCIPAL DO POPUP ──────────────────────
+        BorderPane popup = new BorderPane();
+        popup.setMaxWidth(540);
+        popup.setMaxHeight(500);
         popup.setPrefHeight(Region.USE_COMPUTED_SIZE);
+        popup.setStyle("""
+            -fx-background-color: white;
+            -fx-background-radius: 15;
+            -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 20, 0, 0, 6);
+        """);
+        popup.setFocusTraversable(false);
 
-        // ── LISTA DE ITENS ────────────────────────────────────
-        VBox listaPopup = new VBox(6);
-
-        // mapa mutável de quantidades locais para edição
-        java.util.Map<Long, javafx.beans.property.SimpleIntegerProperty> qtdMap = new java.util.HashMap<>();
-        java.util.Map<Long, javafx.beans.property.SimpleObjectProperty<BigDecimal>> precoMap = new java.util.HashMap<>();
+        // ── MAPAS DE ESTADO ───────────────────────────────────
+        Map<Long, SimpleIntegerProperty> qtdMap = new java.util.HashMap<>();
+        Map<Long, SimpleObjectProperty<BigDecimal>> precoMap = new java.util.HashMap<>();
 
         for (var entry : carrinhoService.getItens().entrySet()) {
             Long id = entry.getKey();
@@ -348,28 +405,11 @@ public class TelaPrincipal {
             if (p instanceof ProdutoSimples ps) precoUnit = ps.getPreco();
             else if (p instanceof Torta t)      precoUnit = t.getPrecoPorKg();
 
-            qtdMap.put(id, new javafx.beans.property.SimpleIntegerProperty(entry.getValue()));
-            precoMap.put(id, new javafx.beans.property.SimpleObjectProperty<>(precoUnit));
+            qtdMap.put(id, new SimpleIntegerProperty(entry.getValue()));
+            precoMap.put(id, new SimpleObjectProperty<>(precoUnit));
         }
 
-        // label total do popup — declarado antes para callbacks atualizarem
-        Label totalPopupLabel = new Label();
-        totalPopupLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 15px;");
-
-        // campo desconto
-        TextField campoDesconto = new TextField("0");
-        campoDesconto.setStyle("""
-        -fx-background-radius: 8;
-        -fx-border-radius: 8;
-        -fx-border-color: #ffd1dc;
-        -fx-padding: 8 12;
-        -fx-font-size: 13px;
-    """);
-        campoDesconto.setEditable(false);
-
-        // referência ao botão editar para os callbacks
-        Button[] btnEditarRef = new Button[1];
-
+        // ── LABELS DO RODAPÉ ──────────────────────────────────
         Label lblSubtotalBruto = new Label("");
         lblSubtotalBruto.setStyle("-fx-font-size: 12px; -fx-text-fill: #aaa; -fx-strikethrough: true;");
         lblSubtotalBruto.managedProperty().bind(lblSubtotalBruto.visibleProperty());
@@ -380,12 +420,29 @@ public class TelaPrincipal {
         lblDescontoValor.managedProperty().bind(lblDescontoValor.visibleProperty());
         lblDescontoValor.setVisible(false);
 
-        // ── RECALCULAR TOTAL ──────────────────────────────────
+        Label totalPopupLabel = new Label();
+        totalPopupLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 15px;");
+
+        // ── CAMPO DESCONTO ────────────────────────────────────
+        Label lblDesconto = new Label("Desconto (%)");
+        lblDesconto.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
+
+        TextField campoDesconto = new TextField("0");
+        campoDesconto.setEditable(false);
+        campoDesconto.setStyle("""
+            -fx-background-radius: 8;
+            -fx-border-radius: 8;
+            -fx-border-color: #ffd1dc;
+            -fx-padding: 8 12;
+            -fx-font-size: 13px;
+        """);
+
+        // ── RECALCULAR ────────────────────────────────────────
         Runnable recalcular = () -> {
             BigDecimal subtotalGeral = BigDecimal.ZERO;
             for (Long id : qtdMap.keySet()) {
-                int q = qtdMap.get(id).get();
                 BigDecimal pu = precoMap.get(id).get();
+                int q = qtdMap.get(id).get();
                 subtotalGeral = subtotalGeral.add(pu.multiply(BigDecimal.valueOf(q)));
             }
 
@@ -400,8 +457,9 @@ public class TelaPrincipal {
 
             BigDecimal totalFinal = subtotalGeral.subtract(valorDesc).setScale(2, RoundingMode.HALF_UP);
 
+            // ── popup ──
             if (valorDesc.compareTo(BigDecimal.ZERO) > 0) {
-                lblSubtotalBruto.setText("Total: R$ " + subtotalGeral.setScale(2, RoundingMode.HALF_UP));
+                lblSubtotalBruto.setText("R$ " + subtotalGeral.setScale(2, RoundingMode.HALF_UP));
                 lblSubtotalBruto.setVisible(true);
                 lblDescontoValor.setText("Desconto: R$ " + valorDesc.setScale(2, RoundingMode.HALF_UP));
                 lblDescontoValor.setVisible(true);
@@ -409,35 +467,81 @@ public class TelaPrincipal {
                 lblSubtotalBruto.setVisible(false);
                 lblDescontoValor.setVisible(false);
             }
-
             totalPopupLabel.setText("TOTAL: R$ " + totalFinal);
+
+            // ── footer da tela principal ──
+            if (valorDesc.compareTo(BigDecimal.ZERO) > 0) {
+                footerSubtotalBruto.setText("R$ " + subtotalGeral.setScale(2, RoundingMode.HALF_UP));
+                footerSubtotalBruto.setVisible(true);
+                footerDesconto.setText("Desconto: R$ " + valorDesc.setScale(2, RoundingMode.HALF_UP));
+                footerDesconto.setVisible(true);
+            } else {
+                footerSubtotalBruto.setVisible(false);
+                footerDesconto.setVisible(false);
+            }
+            totalLabel.setText("TOTAL: R$ " + totalFinal);
         };
 
-        // ── CONSTRUIR LINHAS ──────────────────────────────────
-        Runnable construirLinhas = null; // declarado para referência circular
-        // usamos array trick
-        Runnable[] construirLinhasRef = new Runnable[1];
+        campoDesconto.textProperty().addListener((obs, o, n) -> recalcular.run());
 
+        // ── BOTÕES PRINCIPAIS ─────────────────────────────────
+        Button btnEditar = BotaoFactory.secundario("Editar Valores");
+        Button btnOk     = BotaoFactory.primario("OK");
+        boolean[] modoEdicao = {false};
+
+        // ── LISTA DE ITENS (GridPane) ─────────────────────────
+        VBox listaPopup = new VBox(0);
+        listaPopup.setFocusTraversable(false);
+
+        Runnable[] construirLinhasRef = new Runnable[1];
         construirLinhasRef[0] = () -> {
             listaPopup.getChildren().clear();
 
             for (Long id : new java.util.ArrayList<>(qtdMap.keySet())) {
                 Produto p = carrinhoService.getProduto(id);
+                var qtdProp   = qtdMap.get(id);
+                var precoProp = precoMap.get(id);
 
-                javafx.beans.property.SimpleIntegerProperty qtdProp = qtdMap.get(id);
-                javafx.beans.property.SimpleObjectProperty<BigDecimal> precoProp = precoMap.get(id);
-
-                // quantidade
-                Label lblQtd = new Label(String.valueOf(qtdProp.get()));
-                lblQtd.setStyle("""
-                        -fx-font-size: 12px;
-                        -fx-font-weight: bold;
-                        -fx-min-width: 18;
-                        -fx-alignment: center;
+                // ── GRID DA LINHA ─────────────────────────────
+                GridPane grid = new GridPane();
+                grid.setPadding(new Insets(7, 12, 7, 12));
+                grid.setHgap(8);
+                grid.setStyle("""
+                    -fx-border-color: transparent transparent #f5f5f5 transparent;
+                    -fx-border-width: 0 0 1 0;
                 """);
+                grid.setFocusTraversable(false);
 
+                // col 0 - nome (cresce)
+                ColumnConstraints cNome = new ColumnConstraints();
+                cNome.setHgrow(Priority.ALWAYS);
+                cNome.setFillWidth(true);
+                cNome.setMinWidth(100);
+
+                // col 1 - controles +/-  fixo
+                ColumnConstraints cControle = new ColumnConstraints(130);
+                cControle.setHalignment(HPos.CENTER);
+
+                // col 2 - campo preço fixo
+                ColumnConstraints cPreco = new ColumnConstraints(80);
+                cPreco.setHalignment(HPos.CENTER);
+
+                // col 3 - subtotal fixo
+                ColumnConstraints cSub = new ColumnConstraints(85);
+                cSub.setHalignment(HPos.CENTER);
+
+                grid.getColumnConstraints().addAll(cNome, cControle, cPreco, cSub);
+
+                // nome
+                Label lblNome = new Label(p.getNome());
+                lblNome.setStyle("-fx-font-size: 13px; -fx-text-fill: #333;");
+                lblNome.setWrapText(true);
+                lblNome.setMinHeight(Region.USE_PREF_SIZE); // 👈 deixa crescer verticalmente
+                GridPane.setValignment(lblNome, VPos.CENTER); // 👈 centraliza na linha
+
+                // botões compactos
                 Button btnMenos = new Button("-");
-                                btnMenos.setStyle("""
+                btnMenos.setStyle("""
                     -fx-background-color: #6c757d;
                     -fx-text-fill: white;
                     -fx-background-radius: 15;
@@ -456,25 +560,24 @@ public class TelaPrincipal {
                     -fx-cursor: hand;
                 """);
 
-                // subtotal da linha
-                BigDecimal subInicial = precoProp.get().multiply(BigDecimal.valueOf(qtdProp.get()));
-                Label lblSub = new Label("R$ " + subInicial.setScale(2, RoundingMode.HALF_UP));
-                lblSub.setStyle("""
+                Label lblQtd = new Label(String.valueOf(qtdProp.get()));
+                lblQtd.setStyle("""
                     -fx-font-size: 12px;
                     -fx-font-weight: bold;
-                    -fx-text-fill: #333;
+                    -fx-min-width: 18;
+                    -fx-alignment: center;
                 """);
-                lblSub.setPrefWidth(80);
-                lblSub.setMinWidth(80);
-                lblSub.setMaxWidth(80);
-                lblSub.setAlignment(Pos.CENTER_RIGHT);
 
-                // campo de preço (só editável quando modo edição ativo)
-                TextField campoPreco = new TextField(precoProp.get().setScale(2, RoundingMode.HALF_UP).toString());
+                HBox controle = new HBox(6, btnMenos, lblQtd, btnMais);
+                controle.setAlignment(Pos.CENTER);
+
+                // campo preço
+                TextField campoPreco = new TextField(
+                        precoProp.get().setScale(2, RoundingMode.HALF_UP).toString());
                 campoPreco.setEditable(false);
-                campoPreco.setPrefWidth(70);
-                campoPreco.setMinWidth(70);
-                campoPreco.setMaxWidth(70);
+                campoPreco.setPrefWidth(72);
+                campoPreco.setMinWidth(72);
+                campoPreco.setMaxWidth(72);
                 campoPreco.setStyle("""
                     -fx-background-radius: 6;
                     -fx-border-radius: 6;
@@ -482,13 +585,28 @@ public class TelaPrincipal {
                     -fx-padding: 4 6;
                     -fx-font-size: 12px;
                 """);
-                // ao editar preço manualmente
+
+                // subtotal
+                BigDecimal subInicial = precoProp.get()
+                        .multiply(BigDecimal.valueOf(qtdProp.get()))
+                        .setScale(2, RoundingMode.HALF_UP);
+
+                Label lblSub = new Label("R$ " + subInicial);
+                lblSub.setStyle("""
+                    -fx-font-size: 12px;
+                    -fx-font-weight: bold;
+                    -fx-text-fill: #333;
+                """);
+
+                // ── CALLBACKS ─────────────────────────────────
                 campoPreco.textProperty().addListener((obs, o, n) -> {
                     try {
                         BigDecimal novoPreco = new BigDecimal(n.replace(",", "."));
                         precoProp.set(novoPreco);
-                        BigDecimal sub = novoPreco.multiply(BigDecimal.valueOf(qtdProp.get()));
-                        lblSub.setText("R$ " + sub.setScale(2, RoundingMode.HALF_UP));
+                        BigDecimal sub = novoPreco
+                                .multiply(BigDecimal.valueOf(qtdProp.get()))
+                                .setScale(2, RoundingMode.HALF_UP);
+                        lblSub.setText("R$ " + sub);
                         recalcular.run();
                     } catch (Exception ignored) {}
                 });
@@ -497,16 +615,16 @@ public class TelaPrincipal {
                     qtdProp.set(qtdProp.get() + 1);
                     carrinhoService.getItens().put(id, qtdProp.get());
                     lblQtd.setText(String.valueOf(qtdProp.get()));
-                    BigDecimal sub = precoProp.get().multiply(BigDecimal.valueOf(qtdProp.get()));
-                    lblSub.setText("R$ " + sub.setScale(2, RoundingMode.HALF_UP));
+                    BigDecimal sub = precoProp.get()
+                            .multiply(BigDecimal.valueOf(qtdProp.get()))
+                            .setScale(2, RoundingMode.HALF_UP);
+                    lblSub.setText("R$ " + sub);
                     recalcular.run();
                     atualizarCarrinho(listaCarrinho, totalLabel);
                 });
 
                 btnMenos.setOnAction(ev -> {
-                    int atual = qtdProp.get();
-                    if (atual <= 1) {
-                        // pergunta se quer remover
+                    if (qtdProp.get() <= 1) {
                         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
                         confirm.setHeaderText("Remover \"" + p.getNome() + "\"?");
                         confirm.setContentText("Deseja retirar este produto do pedido?");
@@ -521,40 +639,34 @@ public class TelaPrincipal {
                             }
                         });
                     } else {
-                        qtdProp.set(atual - 1);
+                        qtdProp.set(qtdProp.get() - 1);
                         carrinhoService.getItens().put(id, qtdProp.get());
                         lblQtd.setText(String.valueOf(qtdProp.get()));
-                        BigDecimal sub = precoProp.get().multiply(BigDecimal.valueOf(qtdProp.get()));
-                        lblSub.setText("R$ " + sub.setScale(2, RoundingMode.HALF_UP));
+                        BigDecimal sub = precoProp.get()
+                                .multiply(BigDecimal.valueOf(qtdProp.get()))
+                                .setScale(2, RoundingMode.HALF_UP);
+                        lblSub.setText("R$ " + sub);
                         recalcular.run();
                         atualizarCarrinho(listaCarrinho, totalLabel);
                     }
                 });
 
-                HBox controle = new HBox(6, btnMenos, lblQtd, btnMais);
-                controle.setAlignment(Pos.CENTER);
+                // guarda referência ao campoPreco para ativar edição
+                // guarda referência ao campoPreco para ativar edição
+                grid.setUserData(campoPreco);
 
-                Label lblNome = new Label(p.getNome());
-                lblNome.setStyle("-fx-font-size: 13px; -fx-text-fill: #333;");
-                HBox.setHgrow(lblNome, Priority.ALWAYS);
+            // alinhamento vertical centralizado quando o nome quebrar linha
+                GridPane.setValignment(lblNome, VPos.CENTER);
+                GridPane.setValignment(controle, VPos.CENTER);
+                GridPane.setValignment(campoPreco, VPos.CENTER);
+                GridPane.setValignment(lblSub, VPos.CENTER);
 
-                Region sp = new Region();
-                HBox.setHgrow(sp, Priority.ALWAYS);
+                grid.add(lblNome,    0, 0);
+                grid.add(controle,   1, 0);
+                grid.add(campoPreco, 2, 0);
+                grid.add(lblSub,     3, 0);
 
-                HBox linha = new HBox(10, lblNome, controle, campoPreco, lblSub);
-                linha.setAlignment(Pos.CENTER_LEFT);
-                linha.setPadding(new Insets(6, 8, 6, 8));
-                linha.setStyle("""
-                    -fx-background-color: white;
-                    -fx-border-color: transparent transparent #f5f5f5 transparent;
-                    -fx-border-width: 0 0 1 0;
-                """);
-                linha.setUserData(campoPreco);
-
-                // guarda referência ao campoPreco para ativar edição depois
-                linha.setUserData(campoPreco);
-
-                listaPopup.getChildren().add(linha);
+                listaPopup.getChildren().add(grid);
             }
 
             recalcular.run();
@@ -562,61 +674,55 @@ public class TelaPrincipal {
 
         construirLinhasRef[0].run();
 
-        // ── DESCONTO ──────────────────────────────────────────
-        Label lblDesconto = new Label("Desconto (%)");
-        lblDesconto.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
-        campoDesconto.textProperty().addListener((obs, o, n) -> recalcular.run());
+        // ── SCROLL da lista ───────────────────────────────────
+        ScrollPane scroll = new ScrollPane(listaPopup);
+        scroll.setFitToWidth(true);
+        scroll.setFocusTraversable(false);
+        scroll.setPrefHeight(280);
+        scroll.setStyle("""
+            -fx-background: white;
+            -fx-background-color: white;
+            -fx-focus-color: transparent;
+            -fx-faint-focus-color: transparent;
+        """);
 
-        VBox blocoDesconto = new VBox(4, lblDesconto, campoDesconto);
+        popup.setCenter(scroll);
 
-        // dispara cálculo inicial
-        recalcular.run();
-
-        // ── BOTÕES ────────────────────────────────────────────
-        Button btnEditar = BotaoFactory.secundario("Editar Valores");
-        Button btnOk     = BotaoFactory.primario("OK");
-        btnEditarRef[0]  = btnEditar;
-
-        // estado de edição
-        boolean[] modoEdicao = {false};
-
+        // ── RODAPÉ FIXO ───────────────────────────────────────
         btnEditar.setOnAction(ev -> {
             modoEdicao[0] = !modoEdicao[0];
 
-            // ativa/desativa campos de preço e desconto
             campoDesconto.setEditable(modoEdicao[0]);
             campoDesconto.setStyle(modoEdicao[0] ? """
-            -fx-background-radius: 8;
-            -fx-border-radius: 8;
-            -fx-border-color: #ff4d6d;
-            -fx-padding: 8 12;
-            -fx-font-size: 13px;
-        """ : """
-            -fx-background-radius: 8;
-            -fx-border-radius: 8;
-            -fx-border-color: #ffd1dc;
-            -fx-padding: 8 12;
-            -fx-font-size: 13px;
-        """);
+                -fx-background-radius: 8;
+                -fx-border-radius: 8;
+                -fx-border-color: #ff4d6d;
+                -fx-padding: 8 12;
+                -fx-font-size: 13px;
+            """ : """
+                -fx-background-radius: 8;
+                -fx-border-radius: 8;
+                -fx-border-color: #ffd1dc;
+                -fx-padding: 8 12;
+                -fx-font-size: 13px;
+            """);
 
             for (var node : listaPopup.getChildren()) {
-                if (node instanceof HBox hb && hb.getUserData() instanceof TextField tf) {
+                if (node instanceof GridPane gp && gp.getUserData() instanceof TextField tf) {
                     tf.setEditable(modoEdicao[0]);
                     tf.setStyle(modoEdicao[0] ? """
-                    -fx-background-radius: 6;
-                    -fx-border-radius: 6;
-                    -fx-border-color: #ff4d6d;
-                    -fx-padding: 4 8;
-                    -fx-font-size: 13px;
-                    -fx-pref-width: 70;
-                """ : """
-                    -fx-background-radius: 6;
-                    -fx-border-radius: 6;
-                    -fx-border-color: transparent;
-                    -fx-padding: 4 8;
-                    -fx-font-size: 13px;
-                    -fx-pref-width: 70;
-                """);
+                        -fx-background-radius: 6;
+                        -fx-border-radius: 6;
+                        -fx-border-color: #ff4d6d;
+                        -fx-padding: 4 6;
+                        -fx-font-size: 12px;
+                    """ : """
+                        -fx-background-radius: 6;
+                        -fx-border-radius: 6;
+                        -fx-border-color: transparent;
+                        -fx-padding: 4 6;
+                        -fx-font-size: 12px;
+                    """);
                 }
             }
 
@@ -626,18 +732,36 @@ public class TelaPrincipal {
         HBox botoes = new HBox(10, btnEditar, btnOk);
         botoes.setAlignment(Pos.CENTER_RIGHT);
 
-        // ── MONTA POPUP ───────────────────────────────────────
-        popup.getChildren().addAll(listaPopup, blocoDesconto, lblSubtotalBruto, lblDescontoValor, totalPopupLabel, botoes);
+        VBox rodape = new VBox(6,
+                new VBox(2, lblDesconto, campoDesconto),
+                lblSubtotalBruto,
+                lblDescontoValor,
+                totalPopupLabel,
+                botoes
+        );
+        rodape.setPadding(new Insets(12, 12, 14, 12));
+        rodape.setStyle("""
+            -fx-background-color: white;
+            -fx-border-color: #f0f0f0 transparent transparent transparent;
+            -fx-border-width: 1 0 0 0;
+            -fx-background-radius: 0 0 15 15;
+        """);
 
-        // ── OVERLAY ───────────────────────────────────────────
+        popup.setBottom(rodape);
+
+        // ── OVERLAY + ANIMAÇÃO ────────────────────────────────
         StackPane overlay = new StackPane(popup);
-        overlay.setStyle("-fx-background-color: rgba(0,0,0,0.4);");
+        overlay.setStyle("""
+            -fx-background-color: rgba(0,0,0,0.4);
+            -fx-focus-color: transparent;
+            -fx-faint-focus-color: transparent;
+        """);
         overlay.setAlignment(Pos.CENTER);
         overlay.setPrefSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        overlay.setFocusTraversable(false);
 
         rootPrincipal.getChildren().add(overlay);
 
-        // ── ANIMAÇÃO (igual TelaDoces) ────────────────────────
         popup.setScaleX(0);
         popup.setScaleY(0);
 
@@ -647,5 +771,461 @@ public class TelaPrincipal {
         anim.play();
 
         btnOk.setOnAction(ev -> rootPrincipal.getChildren().remove(overlay));
+    }
+
+    private void mostrarPopupFinalizarPedido(String nomeClienteTexto, VBox listaCarrinho, Label totalLabel, Label footerSubtotalBruto, Label footerDesconto, TextField campoNomeCliente, TextArea campoObservacao) {
+        // ── CARD ──────────────────────────────────────────────
+        BorderPane popup = new BorderPane();
+        popup.setMaxWidth(520);
+        popup.setMaxHeight(520);
+        popup.setStyle("""
+            -fx-background-color: white;
+            -fx-background-radius: 15;
+            -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 20, 0, 0, 6);
+        """);
+        popup.setFocusTraversable(false);
+
+        // ── TOPO: nome do cliente ──────────────────────────────
+        Label lblCliente = new Label(nomeClienteTexto.toUpperCase());
+        lblCliente.setStyle("""
+            -fx-font-size: 15px;
+            -fx-font-weight: bold;
+            -fx-text-fill: #333;
+        """);
+
+        Label lblData = new Label(
+                java.time.LocalDateTime.now()
+                        .format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+        );
+        lblData.setStyle("-fx-font-size: 11px; -fx-text-fill: #aaa;");
+
+        Label tracejadoTopo = new Label(
+                "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+        );
+        tracejadoTopo.setStyle("-fx-text-fill: #ccc; -fx-font-size: 10px;");
+
+        // header colunas
+        GridPane headerGrid = new GridPane();
+        headerGrid.setHgap(8);
+        headerGrid.setPadding(new Insets(4, 0, 4, 0));
+
+        ColumnConstraints hcNome = new ColumnConstraints();
+        hcNome.setHgrow(Priority.ALWAYS);
+        hcNome.setFillWidth(true);
+
+        ColumnConstraints hcQtd  = new ColumnConstraints(50);
+        hcQtd.setHalignment(HPos.CENTER);
+
+        ColumnConstraints hcUnit = new ColumnConstraints(85);
+        hcUnit.setHalignment(HPos.CENTER);
+
+        ColumnConstraints hcSub  = new ColumnConstraints(90);
+        hcSub.setHalignment(HPos.CENTER);
+
+        headerGrid.getColumnConstraints().addAll(hcNome, hcQtd, hcUnit, hcSub);
+
+        String estiloH = "-fx-font-size: 10px; -fx-text-fill: #888; -fx-font-weight: bold;";
+        Label hN = new Label("PRODUTO"); hN.setStyle(estiloH);
+        Label hQ = new Label("QTD");     hQ.setStyle(estiloH);
+        Label hU = new Label("UNIT.");   hU.setStyle(estiloH);
+        Label hS = new Label("TOTAL");   hS.setStyle(estiloH);
+
+        headerGrid.add(hN, 0, 0);
+        headerGrid.add(hQ, 1, 0);
+        headerGrid.add(hU, 2, 0);
+        headerGrid.add(hS, 3, 0);
+
+        VBox topo = new VBox(6, lblCliente, lblData, tracejadoTopo, headerGrid);
+        topo.setPadding(new Insets(16, 16, 6, 16));
+        topo.setStyle("""
+            -fx-background-color: white;
+            -fx-border-color: transparent transparent #f0f0f0 transparent;
+            -fx-border-width: 0 0 1 0;
+            -fx-background-radius: 15 15 0 0;
+        """);
+
+        popup.setTop(topo);
+
+        // ── LISTA DE ITENS ────────────────────────────────────
+        VBox listaRelatorio = new VBox(0);
+        listaRelatorio.setFocusTraversable(false);
+
+        BigDecimal subtotalGeral = BigDecimal.ZERO;
+
+        for (var entry : carrinhoService.getItens().entrySet()) {
+            Produto p = carrinhoService.getProduto(entry.getKey());
+            int q = entry.getValue();
+
+            BigDecimal precoUnit = BigDecimal.ZERO;
+            if (p instanceof ProdutoSimples ps) precoUnit = ps.getPreco();
+            else if (p instanceof Torta t)      precoUnit = t.getPrecoPorKg();
+
+            BigDecimal sub = precoUnit.multiply(BigDecimal.valueOf(q)).setScale(2, RoundingMode.HALF_UP);
+            subtotalGeral = subtotalGeral.add(sub);
+
+            GridPane linha = new GridPane();
+            linha.setHgap(8);
+            linha.setPadding(new Insets(7, 16, 7, 16));
+            linha.setStyle("""
+                -fx-border-color: transparent transparent #f8f8f8 transparent;
+                -fx-border-width: 0 0 1 0;
+            """);
+            linha.setFocusTraversable(false);
+
+            ColumnConstraints lcNome = new ColumnConstraints();
+            lcNome.setHgrow(Priority.ALWAYS);
+            lcNome.setFillWidth(true);
+
+            ColumnConstraints lcQtd  = new ColumnConstraints(50);
+            lcQtd.setHalignment(HPos.CENTER);
+
+            ColumnConstraints lcUnit = new ColumnConstraints(85);
+            lcUnit.setHalignment(HPos.CENTER);
+
+            ColumnConstraints lcSub  = new ColumnConstraints(90);
+            lcSub.setHalignment(HPos.CENTER);
+
+            linha.getColumnConstraints().addAll(lcNome, lcQtd, lcUnit, lcSub);
+
+            Label lNome = new Label(p.getNome());
+            lNome.setStyle("-fx-font-size: 13px; -fx-text-fill: #333;");
+            lNome.setWrapText(true);
+            lNome.setMinHeight(Region.USE_PREF_SIZE);
+
+            Label lQtd  = new Label("x" + q);
+            lQtd.setStyle("-fx-font-size: 13px; -fx-text-fill: #555;");
+
+            Label lUnit = new Label("R$ " + precoUnit.setScale(2, RoundingMode.HALF_UP));
+            lUnit.setStyle("-fx-font-size: 13px; -fx-text-fill: #555;");
+
+            Label lSub  = new Label("R$ " + sub);
+            lSub.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #333;");
+
+            GridPane.setValignment(lNome, VPos.CENTER);
+            GridPane.setValignment(lQtd,  VPos.CENTER);
+            GridPane.setValignment(lUnit, VPos.CENTER);
+            GridPane.setValignment(lSub,  VPos.CENTER);
+
+            linha.add(lNome, 0, 0);
+            linha.add(lQtd,  1, 0);
+            linha.add(lUnit, 2, 0);
+            linha.add(lSub,  3, 0);
+
+            listaRelatorio.getChildren().add(linha);
+        }
+
+        ScrollPane scroll = new ScrollPane(listaRelatorio);
+        scroll.setFitToWidth(true);
+        scroll.setFocusTraversable(false);
+        scroll.setPrefHeight(230);
+        scroll.setStyle("""
+            -fx-background: white;
+            -fx-background-color: white;
+            -fx-focus-color: transparent;
+            -fx-faint-focus-color: transparent;
+        """);
+
+        popup.setCenter(scroll);
+
+        // ── RODAPÉ FIXO ───────────────────────────────────────
+
+        // recalcula desconto a partir do totalLabel atual
+        // (pega o valor já com desconto que está no footer)
+        String totalFooter = totalLabel.getText().replace("TOTAL: R$ ", "").trim();
+        BigDecimal totalFinalCalculado;
+        try {
+            totalFinalCalculado = new BigDecimal(totalFooter.replace(",", "."));
+        } catch (Exception ex) {
+            totalFinalCalculado = subtotalGeral;
+        }
+        final BigDecimal totalFinal = totalFinalCalculado;
+
+        BigDecimal valorDesc = subtotalGeral.subtract(totalFinal).setScale(2, RoundingMode.HALF_UP);
+
+        Label tracejadoRodape = new Label(
+                "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+        );
+        tracejadoRodape.setStyle("-fx-text-fill: #ccc; -fx-font-size: 10px;");
+
+        Label lblSubBruto = new Label("R$ " + subtotalGeral.setScale(2, RoundingMode.HALF_UP));
+        lblSubBruto.setStyle("-fx-font-size: 12px; -fx-text-fill: #aaa; -fx-strikethrough: true;");
+        lblSubBruto.managedProperty().bind(lblSubBruto.visibleProperty());
+        lblSubBruto.setVisible(valorDesc.compareTo(BigDecimal.ZERO) > 0);
+
+        Label lblDescValor = new Label("Desconto: R$ " + valorDesc.setScale(2, RoundingMode.HALF_UP));
+        lblDescValor.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
+        lblDescValor.managedProperty().bind(lblDescValor.visibleProperty());
+        lblDescValor.setVisible(valorDesc.compareTo(BigDecimal.ZERO) > 0);
+
+        Label lblTotal = new Label("TOTAL: R$ " + totalFinal.setScale(2, RoundingMode.HALF_UP));
+        lblTotal.setStyle("-fx-font-weight: bold; -fx-font-size: 15px; -fx-text-fill: #222;");
+
+        Button btnCancelar  = BotaoFactory.secundario("Cancelar");
+        Button btnConfirmar = BotaoFactory.primario("Confirmar Pedido");
+
+        HBox botoes = new HBox(10, btnCancelar, btnConfirmar);
+        botoes.setAlignment(Pos.CENTER_RIGHT);
+
+        // observação — só aparece se tiver algo escrito
+        Label lblObsTexto = new Label(campoObservacao.getText().trim());
+        lblObsTexto.setStyle("-fx-font-size: 11px; -fx-text-fill: #666;");
+        lblObsTexto.setWrapText(true);
+        lblObsTexto.managedProperty().bind(lblObsTexto.visibleProperty());
+        lblObsTexto.setVisible(!campoObservacao.getText().isBlank());
+
+        Label lblObsTitulo = new Label("Obs:");
+        lblObsTitulo.setStyle("-fx-font-size: 11px; -fx-text-fill: #aaa; -fx-font-weight: bold;");
+        lblObsTitulo.managedProperty().bind(lblObsTitulo.visibleProperty());
+        lblObsTitulo.setVisible(!campoObservacao.getText().isBlank());
+
+        VBox blocoObs = new VBox(2, lblObsTitulo, lblObsTexto);
+        blocoObs.managedProperty().bind(blocoObs.visibleProperty());
+        blocoObs.setVisible(!campoObservacao.getText().isBlank());
+
+        VBox rodape = new VBox(6, blocoObs, tracejadoRodape, lblSubBruto, lblDescValor, lblTotal, botoes);
+        rodape.setPadding(new Insets(10, 16, 14, 16));
+        rodape.setStyle("""
+            -fx-background-color: white;
+            -fx-border-color: #f0f0f0 transparent transparent transparent;
+            -fx-border-width: 1 0 0 0;
+            -fx-background-radius: 0 0 15 15;
+        """);
+
+        popup.setBottom(rodape);
+
+        // ── OVERLAY + ANIMAÇÃO ────────────────────────────────
+        StackPane overlay = new StackPane(popup);
+        overlay.setStyle("""
+            -fx-background-color: rgba(0,0,0,0.4);
+            -fx-focus-color: transparent;
+            -fx-faint-focus-color: transparent;
+        """);
+        overlay.setAlignment(Pos.CENTER);
+        overlay.setPrefSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        overlay.setFocusTraversable(false);
+
+
+        rootPrincipal.getChildren().add(overlay);
+
+        popup.setScaleX(0);
+        popup.setScaleY(0);
+
+        ScaleTransition anim = new ScaleTransition(Duration.millis(200), popup);
+        anim.setToX(1);
+        anim.setToY(1);
+        anim.play();
+
+        // ── BOTÃO CANCELAR: abre popup de confirmação ─────────
+        btnCancelar.setOnAction(ev -> {
+
+            Alert confirm = new Alert(Alert.AlertType.NONE);
+            confirm.setTitle("Cancelar pedido?");
+            confirm.setHeaderText("O que deseja fazer?");
+
+            ButtonType btnContinuar      = new ButtonType("Continuar Pedido");
+            ButtonType btnCancelarPedido = new ButtonType("Cancelar Pedido", ButtonBar.ButtonData.CANCEL_CLOSE);
+
+            confirm.getButtonTypes().setAll(btnContinuar, btnCancelarPedido);
+
+            confirm.showAndWait().ifPresent(resp -> {
+                if (resp == btnContinuar) {
+                    // fecha só o popup de finalizar, volta para a tela principal
+                    rootPrincipal.getChildren().remove(overlay);
+                }
+                if (resp == btnCancelarPedido) {
+                    // fecha popup, limpa tudo
+                    rootPrincipal.getChildren().remove(overlay);
+                    carrinhoService.limpar();
+                    footerSubtotalBruto.setVisible(false);
+                    footerDesconto.setVisible(false);
+                    totalLabel.setText("TOTAL: R$ 0,00");
+                    campoNomeCliente.clear();
+                    campoObservacao.clear();
+                    atualizarCarrinho(listaCarrinho, totalLabel);
+                }
+            });
+        });
+
+        // ── BOTÃO CONFIRMAR ───────────────────────────────────
+        btnConfirmar.setOnAction(ev -> {
+
+            // ── MONTA O PEDIDO ────────────────────────────────
+            Pedido pedido = new Pedido();
+            pedido.setNomeCliente(nomeClienteTexto);
+            pedido.setData(java.time.LocalDateTime.now());
+            pedido.setDesconto(valorDesc);
+            pedido.setObservacao(campoObservacao.getText().trim());
+
+            List<ItemPedido> itens = new ArrayList<>();
+
+            for (var entry : carrinhoService.getItens().entrySet()) {
+                Produto p = carrinhoService.getProduto(entry.getKey());
+                int q = entry.getValue();
+
+                BigDecimal precoUnit = BigDecimal.ZERO;
+                if (p instanceof ProdutoSimples ps) precoUnit = ps.getPreco();
+                else if (p instanceof Torta t)      precoUnit = t.getPrecoPorKg();
+
+                ItemPedido item = new ItemPedido();
+                item.setProduto(p);
+                item.setQuantidade(BigDecimal.valueOf(q));
+                item.setPrecoUnitario(precoUnit);
+                item.setPedido(pedido);
+
+                itens.add(item);
+            }
+
+            pedido.setItens(itens);
+
+            // ── SALVA ─────────────────────────────────────────
+            try {
+                pedido.setTotal(totalFinal);
+                pedidoService.salvarSemRecalcular(pedido);
+
+            // guarda referência ao pedido salvo para o popup de PDF
+                Pedido pedidoSalvo = pedidoService.buscarComItens(pedido.getId());
+
+                Alert sucesso = new Alert(Alert.AlertType.INFORMATION);
+                sucesso.setTitle("Pedido confirmado");
+                sucesso.setHeaderText(null);
+                sucesso.setContentText("✅ Pedido de " + nomeClienteTexto + " finalizado com sucesso!");
+                sucesso.showAndWait();
+
+            // limpa tudo
+                rootPrincipal.getChildren().remove(overlay);
+                carrinhoService.limpar();
+                footerSubtotalBruto.setVisible(false);
+                footerDesconto.setVisible(false);
+                totalLabel.setText("TOTAL: R$ 0,00");
+                campoNomeCliente.clear();
+                campoObservacao.clear();
+                atualizarCarrinho(listaCarrinho, totalLabel);
+
+            // abre popup de PDF
+                mostrarPopupSalvarPdf(pedidoSalvo);
+
+            } catch (Exception ex) {
+                Alert erro = new Alert(Alert.AlertType.ERROR);
+                erro.setTitle("Erro ao salvar");
+                erro.setHeaderText("Não foi possível finalizar o pedido.");
+                erro.setContentText(ex.getMessage());
+                erro.showAndWait();
+            }
+        });
+    }
+
+    private void mostrarPopupSalvarPdf(Pedido pedido) {
+
+        VBox popup = new VBox(12);
+        popup.setPadding(new Insets(24));
+        popup.setMaxWidth(380);
+        popup.setMaxHeight(Region.USE_PREF_SIZE);
+        popup.setPrefHeight(Region.USE_COMPUTED_SIZE);
+        popup.setStyle("""
+        -fx-background-color: white;
+        -fx-background-radius: 15;
+        -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 20, 0, 0, 6);
+    """);
+
+        Label titulo = new Label("Salvar PDF");
+        titulo.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
+
+        Label subtitulo = new Label("Deseja salvar algum documento?");
+        subtitulo.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
+
+        Button btnPedido        = BotaoFactory.primario("Pedido (A4)");
+        Button btnComanda       = BotaoFactory.primario("Comanda");
+        Button btnAmbos         = BotaoFactory.secundario("Pedido e Comanda");
+        Button btnNenhum        = BotaoFactory.secundario("Nenhum");
+
+        btnPedido.setMaxWidth(Double.MAX_VALUE);
+        btnComanda.setMaxWidth(Double.MAX_VALUE);
+        btnAmbos.setMaxWidth(Double.MAX_VALUE);
+        btnNenhum.setMaxWidth(Double.MAX_VALUE);
+
+        popup.getChildren().addAll(titulo, subtitulo, btnPedido, btnComanda, btnAmbos, btnNenhum);
+
+        StackPane overlay = new StackPane(popup);
+        overlay.setStyle("-fx-background-color: rgba(0,0,0,0.4); -fx-focus-color: transparent; -fx-faint-focus-color: transparent;");
+        overlay.setAlignment(Pos.CENTER);
+        overlay.setPrefSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        overlay.setFocusTraversable(false);
+
+        rootPrincipal.getChildren().add(overlay);
+
+        popup.setScaleX(0); popup.setScaleY(0);
+        ScaleTransition anim = new ScaleTransition(Duration.millis(200), popup);
+        anim.setToX(1); anim.setToY(1); anim.play();
+
+        String nomeBase = pedido.getNomeCliente().toUpperCase();
+
+        btnPedido.setOnAction(ev -> {
+            rootPrincipal.getChildren().remove(overlay);
+            salvarArquivo(pedido, nomeBase + " - PEDIDO", false);
+        });
+
+        btnComanda.setOnAction(ev -> {
+            rootPrincipal.getChildren().remove(overlay);
+            salvarArquivo(pedido, nomeBase + " - COMANDA", true);
+        });
+
+        btnAmbos.setOnAction(ev -> {
+            rootPrincipal.getChildren().remove(overlay);
+            salvarArquivo(pedido, nomeBase + " - PEDIDO", false);
+            salvarArquivo(pedido, nomeBase + " - COMANDA", true);
+        });
+
+        btnNenhum.setOnAction(ev -> rootPrincipal.getChildren().remove(overlay));
+    }
+
+    private void salvarArquivo(Pedido pedido, String nomeArquivo, boolean comanda) {
+
+        java.util.prefs.Preferences prefs =
+                java.util.prefs.Preferences.userNodeForPackage(PedidoPdfService.class);
+
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Salvar " + (comanda ? "Comanda" : "Pedido"));
+        chooser.setInitialFileName(nomeArquivo + ".pdf");
+        chooser.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+
+        // restaura o último diretório usado
+        String ultimoDir = prefs.get("ultimo_diretorio_pdf", null);
+        if (ultimoDir != null) {
+            java.io.File dirAnterior = new java.io.File(ultimoDir);
+            if (dirAnterior.exists() && dirAnterior.isDirectory()) {
+                chooser.setInitialDirectory(dirAnterior);
+            }
+        }
+
+        javafx.stage.Window window = rootPrincipal.getScene().getWindow();
+        java.io.File destino = chooser.showSaveDialog(window);
+
+        if (destino != null) {
+
+            // salva o diretório escolhido para a próxima vez
+            prefs.put("ultimo_diretorio_pdf", destino.getParent());
+
+            try {
+                if (comanda) {
+                    pedidoPdfService.gerarComanda(pedido, destino);
+                } else {
+                    pedidoPdfService.gerarPedidoA4(pedido, destino);
+                }
+
+                Alert ok = new Alert(Alert.AlertType.INFORMATION);
+                ok.setTitle("Salvo");
+                ok.setHeaderText(null);
+                ok.setContentText("✅ Arquivo salvo em:\n" + destino.getAbsolutePath());
+                ok.showAndWait();
+
+            } catch (Exception ex) {
+                Alert erro = new Alert(Alert.AlertType.ERROR);
+                erro.setTitle("Erro ao salvar PDF");
+                erro.setHeaderText("Não foi possível gerar o arquivo.");
+                erro.setContentText(ex.getMessage());
+                erro.showAndWait();
+            }
+        }
     }
 }

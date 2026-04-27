@@ -4,6 +4,8 @@ import com.gerenciador.sistema_loja.model.Produto;
 import com.gerenciador.sistema_loja.model.tiposproduto.ProdutoSimples;
 import com.gerenciador.sistema_loja.model.tiposproduto.Torta;
 import com.gerenciador.sistema_loja.service.CarrinhoService;
+import com.gerenciador.sistema_loja.service.PedidoPdfService;
+import com.gerenciador.sistema_loja.service.PedidoService;
 import com.gerenciador.sistema_loja.service.ProdutoService;
 import com.gerenciador.sistema_loja.ui.util.BotaoFactory;
 import javafx.animation.ScaleTransition;
@@ -25,11 +27,15 @@ public class TelaSalgados {
     private StackPane rootPrincipal;
     private ProdutoService service;
     private CarrinhoService carrinhoService;
+    private PedidoService pedidoService;
+    private PedidoPdfService pedidoPdfService;
 
-    public TelaSalgados(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService) {
+    public TelaSalgados(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService, PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
         this.rootPrincipal = rootPrincipal;
         this.service = service;
         this.carrinhoService = carrinhoService;
+        this.pedidoService = pedidoService;
+        this.pedidoPdfService = pedidoPdfService;
     }
 
     public Parent criarTela() {
@@ -268,7 +274,7 @@ public class TelaSalgados {
     }
 
     private void voltar() {
-        TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService);
+        TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
         rootPrincipal.getChildren().setAll(tela.criarTela());
     }
 }

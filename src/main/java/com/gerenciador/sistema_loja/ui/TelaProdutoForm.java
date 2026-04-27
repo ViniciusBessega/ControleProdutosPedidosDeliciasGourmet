@@ -5,6 +5,8 @@ import com.gerenciador.sistema_loja.model.tiposproduto.ProdutoSimples;
 import com.gerenciador.sistema_loja.model.tiposproduto.Torta;
 import com.gerenciador.sistema_loja.model.tiposproduto.Categoria;
 import com.gerenciador.sistema_loja.service.CarrinhoService;
+import com.gerenciador.sistema_loja.service.PedidoPdfService;
+import com.gerenciador.sistema_loja.service.PedidoService;
 import com.gerenciador.sistema_loja.service.ProdutoService;
 import com.gerenciador.sistema_loja.ui.util.BotaoFactory;
 import javafx.geometry.Insets;
@@ -21,12 +23,16 @@ public class TelaProdutoForm {
     private ProdutoService service;
     private Produto produto; // null = novo
     private CarrinhoService carrinhoService;
+    private PedidoService pedidoService;
+    private PedidoPdfService pedidoPdfService;
 
-    public TelaProdutoForm(StackPane rootPrincipal, ProdutoService service, Produto produto, CarrinhoService carrinhoService) {
+    public TelaProdutoForm(StackPane rootPrincipal, ProdutoService service, Produto produto, CarrinhoService carrinhoService, PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
         this.rootPrincipal = rootPrincipal;
         this.service = service;
         this.produto = produto;
         this.carrinhoService = carrinhoService;
+        this.pedidoService = pedidoService;
+        this.pedidoPdfService = pedidoPdfService;
     }
 
     public Parent criarTela() {
@@ -264,7 +270,7 @@ public class TelaProdutoForm {
     }
 
     private void voltar() {
-        TelaGerenciarProdutos tela = new TelaGerenciarProdutos(rootPrincipal, service, carrinhoService);
+        TelaGerenciarProdutos tela = new TelaGerenciarProdutos(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
         rootPrincipal.getChildren().setAll(tela.criarTela());
     }
 }

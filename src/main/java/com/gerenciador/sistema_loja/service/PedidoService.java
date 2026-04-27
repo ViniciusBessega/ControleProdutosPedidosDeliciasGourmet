@@ -134,4 +134,13 @@ public class PedidoService {
 
         return pedidoRepository.findAll(pageRequest);
     }
+
+    public Pedido salvarSemRecalcular(Pedido pedido) {
+        return pedidoRepository.save(pedido);
+    }
+
+    public Pedido buscarComItens(Long id) {
+        return pedidoRepository.findByIdComItens(id)
+                .orElseThrow(() -> new RuntimeException("Pedido não encontrado"));
+    }
 }

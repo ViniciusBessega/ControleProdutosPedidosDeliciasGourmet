@@ -1,6 +1,8 @@
 package com.gerenciador.sistema_loja;
 
 import com.gerenciador.sistema_loja.service.CarrinhoService;
+import com.gerenciador.sistema_loja.service.PedidoPdfService;
+import com.gerenciador.sistema_loja.service.PedidoService;
 import com.gerenciador.sistema_loja.service.ProdutoService;
 import com.gerenciador.sistema_loja.ui.TelaPrincipal;
 import javafx.application.Application;
@@ -29,8 +31,10 @@ public class MainApp extends Application {
 
         ProdutoService produtoService = context.getBean(ProdutoService.class);
         CarrinhoService carrinhoService = context.getBean(CarrinhoService.class);
+        PedidoService pedidoService = context.getBean(PedidoService.class);
+        PedidoPdfService pedidoPdfService = context.getBean(PedidoPdfService.class);
 
-        TelaPrincipal tela = new TelaPrincipal(root, produtoService, carrinhoService);
+        TelaPrincipal tela = new TelaPrincipal(root, produtoService, carrinhoService, pedidoService, pedidoPdfService);
 
         root.getChildren().setAll(tela.criarTela());
 
