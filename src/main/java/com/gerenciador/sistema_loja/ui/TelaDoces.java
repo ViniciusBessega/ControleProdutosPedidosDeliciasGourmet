@@ -145,7 +145,13 @@ public class TelaDoces {
 
             int qAtual = carrinhoService.getItens().getOrDefault(doce.getId(), 0);
 
-            Label quantidade = new Label(String.valueOf(qAtual));
+            TextField quantidade = new TextField(String.valueOf(qAtual));
+            quantidade.setPrefWidth(45);
+            quantidade.setMaxWidth(45);
+            quantidade.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-alignment: center; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #ffd1dc; -fx-padding: 2 4;");
+            quantidade.textProperty().addListener((obs, o, n) -> {
+                if (!n.matches("\\d{0,3}")) quantidade.setText(o);
+            });
 
             Button btnMenos = BotaoFactory.secundario("-");
             Button btnMais = BotaoFactory.primario("+");
@@ -171,6 +177,17 @@ public class TelaDoces {
 
                 int q = carrinhoService.getItens().getOrDefault(doce.getId(), 0);
                 quantidade.setText(String.valueOf(q));
+                // adiciona isso depois do setText nos dois botões:
+                quantidade.textProperty().addListener((obs, o, n) -> {
+                    if (!n.matches("\\d{0,3}")) quantidade.setText(o);
+                    else {
+                        try {
+                            int val = Integer.parseInt(n);
+                            carrinhoService.getItens().put(doce.getId(), val);
+                            atualizarTotal(totalLabel);
+                        } catch (Exception ignored) {}
+                    }
+                });
 
                 atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);
@@ -181,6 +198,15 @@ public class TelaDoces {
 
                 int q = carrinhoService.getItens().getOrDefault(doce.getId(), 0);
                 quantidade.setText(String.valueOf(q));
+                // adiciona isso depois do setText nos dois botões:
+                quantidade.textProperty().addListener((obs, o, n) -> {
+                    if (!n.matches("\\d{0,3}")) { quantidade.setText(o); return; }
+                    try {
+                        int val = Integer.parseInt(n);
+                        carrinhoService.getItens().put(doce.getId(), val);
+                        atualizarTotal(totalLabel);
+                    } catch (Exception ignored) {}
+                });
 
                 atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);

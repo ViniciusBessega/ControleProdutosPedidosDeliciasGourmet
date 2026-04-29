@@ -41,6 +41,8 @@ public class TelaPedidos {
     private String ordenacaoAtual = "Mais recente";
     private LocalDate filtroDataInicio = null;
     private LocalDate filtroDataFim = null;
+    private LocalDate filtroEntregaInicio = null;
+    private LocalDate filtroEntregaFim = null;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
     private static final DateTimeFormatter FMT_DATA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -107,7 +109,10 @@ public class TelaPedidos {
             atualizarTabela(tabela, campoBusca.getText());
         });
 
-        // ── BOTÃO PERÍODO ──────────────────────────────────
+        // ── BOTÃO PERÍODO PEDIDO ───────────────────────────
+        Label lblFiltroPedido = new Label("Pedido:");
+        lblFiltroPedido.setStyle("-fx-font-size: 11px; -fx-text-fill: #888; -fx-font-weight: bold;");
+
         Button btnPeriodo = BotaoFactory.secundario("📅 Período");
         Label lblPeriodoAtivo = new Label("");
         lblPeriodoAtivo.setStyle("-fx-font-size: 11px; -fx-text-fill: #ff4d6d;");
@@ -115,10 +120,27 @@ public class TelaPedidos {
         lblPeriodoAtivo.setVisible(false);
 
         btnPeriodo.setOnAction(e ->
-                mostrarPopupPeriodo(tabela, campoBusca, btnPeriodo, lblPeriodoAtivo)
+                mostrarPopupPeriodo(tabela, campoBusca, btnPeriodo, lblPeriodoAtivo, false)
         );
 
-        HBox filtros = new HBox(10, cmbOrdenacao, btnPeriodo, lblPeriodoAtivo);
+        // ── BOTÃO PERÍODO ENTREGA ──────────────────────────
+        Label lblFiltroEntrega = new Label("Entrega:");
+        lblFiltroEntrega.setStyle("-fx-font-size: 11px; -fx-text-fill: #888; -fx-font-weight: bold;");
+
+        Button btnPeriodoEntrega = BotaoFactory.secundario("📅 Período");
+        Label lblPeriodoEntregaAtivo = new Label("");
+        lblPeriodoEntregaAtivo.setStyle("-fx-font-size: 11px; -fx-text-fill: #ff4d6d;");
+        lblPeriodoEntregaAtivo.managedProperty().bind(lblPeriodoEntregaAtivo.visibleProperty());
+        lblPeriodoEntregaAtivo.setVisible(false);
+
+        btnPeriodoEntrega.setOnAction(e ->
+                mostrarPopupPeriodo(tabela, campoBusca, btnPeriodoEntrega, lblPeriodoEntregaAtivo, true)
+        );
+
+        VBox filtroPedidoBox  = new VBox(3, lblFiltroPedido,  new HBox(6, btnPeriodo,        lblPeriodoAtivo));
+        VBox filtroEntregaBox = new VBox(3, lblFiltroEntrega, new HBox(6, btnPeriodoEntrega, lblPeriodoEntregaAtivo));
+
+        HBox filtros = new HBox(15, cmbOrdenacao, filtroPedidoBox, filtroEntregaBox);
         filtros.setAlignment(Pos.CENTER_LEFT);
 
         // ── COLUNAS ───────────────────────────────────────
@@ -133,6 +155,15 @@ public class TelaPedidos {
         colData.setCellValueFactory(c -> {
             LocalDateTime d = c.getValue().getData();
             String txt = d != null ? d.format(FMT) : "-";
+            return new SimpleStringProperty(txt);
+        });
+
+        // ── NOVA COLUNA: DATA ENTREGA ──────────────────────
+        TableColumn<Pedido, String> colDataEntrega = new TableColumn<>("Data Entrega");
+        colDataEntrega.setReorderable(false);
+        colDataEntrega.setCellValueFactory(c -> {
+            LocalDate de = c.getValue().getDataEntrega();
+            String txt = de != null ? de.format(FMT_DATA) : "";
             return new SimpleStringProperty(txt);
         });
 
@@ -159,9 +190,9 @@ public class TelaPedidos {
                 btnEditar.setOnAction(e -> {
                     Pedido p = getTableRow().getItem();
                     if (p != null) {
-                        Pedido pedidoCompleto = pedidoService.buscarComItens(p.getId()); // 👈
+                        Pedido pedidoCompleto = pedidoService.buscarComItens(p.getId());
                         TelaEditarPedido tela = new TelaEditarPedido(
-                                                        rootPrincipal, produtoService, carrinhoService, pedidoService, pedidoCompleto, pedidoPdfService);
+                                rootPrincipal, produtoService, carrinhoService, pedidoService, pedidoCompleto, pedidoPdfService);
                         rootPrincipal.getChildren().setAll(tela.criarTela());
                     }
                 });
@@ -198,7 +229,7 @@ public class TelaPedidos {
             }
         });
 
-        tabela.getColumns().addAll(colNome, colData, colTotal, colAcoes);
+        tabela.getColumns().addAll(colNome, colData, colDataEntrega, colTotal, colAcoes);
 
         // ── ESTILO HEADER ─────────────────────────────────
         Platform.runLater(() -> {
@@ -225,35 +256,39 @@ public class TelaPedidos {
     }
 
     // ── POPUP PERÍODO ─────────────────────────────────────
-    private void mostrarPopupPeriodo(TableView<Pedido> tabela, TextField campoBusca, Button btnPeriodo, Label lblPeriodoAtivo) {
+    private void mostrarPopupPeriodo(TableView<Pedido> tabela, TextField campoBusca,
+                                     Button btnRef, Label lblAtivo, boolean entrega) {
 
         VBox popup = new VBox(12);
         popup.setPadding(new Insets(20));
         popup.setMaxWidth(340);
         popup.setStyle("""
-            -fx-background-color: white;
-            -fx-background-radius: 15;
-            -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 20, 0, 0, 6);
-        """);
+        -fx-background-color: white;
+        -fx-background-radius: 15;
+        -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 20, 0, 0, 6);
+    """);
         popup.setMaxHeight(Region.USE_PREF_SIZE);
         popup.setPrefHeight(Region.USE_COMPUTED_SIZE);
 
-        Label titulo = new Label("Filtrar por período");
+        String tituloTexto = entrega ? "Filtrar por período de entrega" : "Filtrar por período do pedido";
+        Label titulo = new Label(tituloTexto);
         titulo.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
 
-        // ── DATA INÍCIO ───────────────────────────────────
+        LocalDate inicioAtual = entrega ? filtroEntregaInicio : filtroDataInicio;
+        LocalDate fimAtual    = entrega ? filtroEntregaFim    : filtroDataFim;
+
         Label lblInicio = new Label("Data início");
         lblInicio.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
 
-        DatePicker dpInicio = new DatePicker(filtroDataInicio);
+        DatePicker dpInicio = new DatePicker(inicioAtual);
         dpInicio.setPromptText("dd/mm/aaaa");
         dpInicio.setMaxWidth(Double.MAX_VALUE);
         dpInicio.setStyle("""
-            -fx-background-radius: 8;
-            -fx-border-radius: 8;
-            -fx-border-color: #ffd1dc;
-            -fx-font-size: 13px;
-        """);
+        -fx-background-radius: 8;
+        -fx-border-radius: 8;
+        -fx-border-color: #ffd1dc;
+        -fx-font-size: 13px;
+    """);
         dpInicio.setConverter(new StringConverter<>() {
             final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
             @Override public String toString(LocalDate d) { return d != null ? fmt.format(d) : ""; }
@@ -263,17 +298,15 @@ public class TelaPedidos {
             }
         });
 
-        // ── DATA FIM ──────────────────────────────────────
         Label lblFim = new Label("Data fim");
         lblFim.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
 
-        DatePicker dpFim = new DatePicker(filtroDataFim);
+        DatePicker dpFim = new DatePicker(fimAtual);
         dpFim.setPromptText("dd/mm/aaaa");
         dpFim.setMaxWidth(Double.MAX_VALUE);
         dpFim.setStyle(dpInicio.getStyle());
         dpFim.setConverter(dpInicio.getConverter());
 
-        // ── BOTÕES ────────────────────────────────────────
         Button btnAplicar = BotaoFactory.primario("Aplicar");
         Button btnLimpar  = BotaoFactory.secundario("Limpar filtro");
 
@@ -298,16 +331,24 @@ public class TelaPedidos {
         anim.setToX(1); anim.setToY(1); anim.play();
 
         btnAplicar.setOnAction(ev -> {
-            filtroDataInicio = dpInicio.getValue();
-            filtroDataFim    = dpFim.getValue();
-
-            if (filtroDataInicio != null || filtroDataFim != null) {
-                String de  = filtroDataInicio != null ? filtroDataInicio.format(FMT_DATA) : "início";
-                String ate = filtroDataFim    != null ? filtroDataFim.format(FMT_DATA)    : "hoje";
-                lblPeriodoAtivo.setText("(" + de + " → " + ate + ")");
-                lblPeriodoAtivo.setVisible(true);
+            if (entrega) {
+                filtroEntregaInicio = dpInicio.getValue();
+                filtroEntregaFim    = dpFim.getValue();
             } else {
-                lblPeriodoAtivo.setVisible(false);
+                filtroDataInicio = dpInicio.getValue();
+                filtroDataFim    = dpFim.getValue();
+            }
+
+            LocalDate ini = entrega ? filtroEntregaInicio : filtroDataInicio;
+            LocalDate fim = entrega ? filtroEntregaFim    : filtroDataFim;
+
+            if (ini != null || fim != null) {
+                String de  = ini != null ? ini.format(FMT_DATA) : "início";
+                String ate = fim != null ? fim.format(FMT_DATA) : "hoje";
+                lblAtivo.setText("(" + de + " → " + ate + ")");
+                lblAtivo.setVisible(true);
+            } else {
+                lblAtivo.setVisible(false);
             }
 
             rootPrincipal.getChildren().remove(overlay);
@@ -315,9 +356,14 @@ public class TelaPedidos {
         });
 
         btnLimpar.setOnAction(ev -> {
-            filtroDataInicio = null;
-            filtroDataFim    = null;
-            lblPeriodoAtivo.setVisible(false);
+            if (entrega) {
+                filtroEntregaInicio = null;
+                filtroEntregaFim    = null;
+            } else {
+                filtroDataInicio = null;
+                filtroDataFim    = null;
+            }
+            lblAtivo.setVisible(false);
             rootPrincipal.getChildren().remove(overlay);
             atualizarTabela(tabela, campoBusca.getText());
         });
@@ -333,7 +379,6 @@ public class TelaPedidos {
 
         List<Pedido> pedidos = pedidoService.listarOrdenado(true);
 
-        // busca por nome
         if (busca != null && !busca.isBlank()) {
             String b = busca.toLowerCase();
             pedidos = pedidos.stream()
@@ -342,7 +387,6 @@ public class TelaPedidos {
                     .collect(Collectors.toList());
         }
 
-        // filtro de período
         if (filtroDataInicio != null) {
             LocalDateTime inicio = filtroDataInicio.atStartOfDay();
             pedidos = pedidos.stream()
@@ -356,7 +400,21 @@ public class TelaPedidos {
                     .collect(Collectors.toList());
         }
 
-        // ordenação
+        // filtros existentes de data do pedido permanecem igual...
+
+        if (filtroEntregaInicio != null) {
+            pedidos = pedidos.stream()
+                    .filter(p -> p.getDataEntrega() != null &&
+                            !p.getDataEntrega().isBefore(filtroEntregaInicio))
+                    .collect(Collectors.toList());
+        }
+        if (filtroEntregaFim != null) {
+            pedidos = pedidos.stream()
+                    .filter(p -> p.getDataEntrega() != null &&
+                            !p.getDataEntrega().isAfter(filtroEntregaFim))
+                    .collect(Collectors.toList());
+        }
+
         pedidos = switch (ordenacaoAtual) {
             case "Mais antigo" -> pedidos.stream()
                     .sorted((a, b) -> {

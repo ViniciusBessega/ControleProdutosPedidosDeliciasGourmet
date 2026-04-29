@@ -16,6 +16,6 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
 
     List<Pedido> findAllByOrderByDataAsc();
 
-    @Query("SELECT p FROM Pedido p LEFT JOIN FETCH p.itens i LEFT JOIN FETCH i.produto WHERE p.id = :id")
+    @Query("SELECT DISTINCT p FROM Pedido p LEFT JOIN FETCH p.itens i LEFT JOIN FETCH i.produto WHERE p.id = :id")
     java.util.Optional<Pedido> findByIdComItens(@Param("id") Long id);
 }

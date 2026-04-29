@@ -50,8 +50,9 @@ public class PedidoPdfService {
         celulaEsq.add(new Paragraph(pedido.getNomeCliente().toUpperCase())
                 .setBold().setFontSize(18));
 
-        if (pedido.getData() != null) {
-            celulaEsq.add(new Paragraph(pedido.getData().format(FMT))
+        if (pedido.getDataEntrega() != null) {
+            celulaEsq.add(new Paragraph("Data de entrega: " +
+                    pedido.getDataEntrega().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
                     .setFontSize(10).setFontColor(ColorConstants.GRAY));
         }
 
@@ -175,46 +176,111 @@ public class PedidoPdfService {
     // ── COMANDA (1/4 A4 = A6 aprox) ──────────────────────
     public void gerarComanda(Pedido pedido, File destino) throws Exception {
 
-        // 1/4 de A4: largura A4 / 2, altura A4 / 2
-        PageSize tamanhoComanda = new PageSize(PageSize.A4.getWidth() / 2,
-                PageSize.A4.getHeight() / 2);
+        PdfWriter writer   = new PdfWriter(destino);
+        PdfDocument pdf    = new PdfDocument(writer);
+        pdf.addNewPage(PageSize.A4);
 
-        PdfWriter writer = new PdfWriter(destino);
-        PdfDocument pdf  = new PdfDocument(writer);
-        Document doc     = new Document(pdf, tamanhoComanda);
-        doc.setMargins(20, 20, 20, 20);
+        float larguraA4 = PageSize.A4.getWidth();
+        float alturaA4  = PageSize.A4.getHeight();
 
-        // cabeçalho
-        doc.add(new Paragraph(pedido.getNomeCliente().toUpperCase())
-                .setBold().setFontSize(12).setTextAlignment(TextAlignment.CENTER));
+        float xInicio = larguraA4 / 2f;
+        float largura = larguraA4 / 2f;
+        float altura  = alturaA4  / 2f;
+        float padding = 15f;
 
+        float[] cursor = { alturaA4 - padding };
+
+        com.itextpdf.kernel.pdf.canvas.PdfCanvas canvas =
+                new com.itextpdf.kernel.pdf.canvas.PdfCanvas(pdf.getFirstPage());
+
+        com.itextpdf.kernel.font.PdfFont fontBold =
+                com.itextpdf.kernel.font.PdfFontFactory.createFont(
+                        com.itextpdf.io.font.constants.StandardFonts.HELVETICA_BOLD);
+
+        com.itextpdf.kernel.font.PdfFont fontNormal =
+                com.itextpdf.kernel.font.PdfFontFactory.createFont(
+                        com.itextpdf.io.font.constants.StandardFonts.HELVETICA);
+
+        // ── borda pontilhada ao redor do quadrante ──────────
+        canvas.setLineDash(3, 3)
+                .setLineWidth(0.5f)
+                .setStrokeColor(com.itextpdf.kernel.colors.ColorConstants.GRAY)
+                .rectangle(xInicio, alturaA4 / 2f, largura, altura)
+                .stroke();
+
+        // ── helpers de escrita ───────────────────────────────
+        java.util.function.BiFunction<String, Float, Float> escreverLinha = (texto, fontSize) -> {
+            float y = cursor[0] - fontSize;
+            canvas.beginText()
+                    .setFontAndSize(fontNormal, fontSize)
+                    .moveText(xInicio + padding, y)
+                    .showText(texto)
+                    .endText();
+            cursor[0] = y - 4f;
+            return cursor[0];
+        };
+
+        java.util.function.BiFunction<String, Float, Float> escreverLinhaBold = (texto, fontSize) -> {
+            float y = cursor[0] - fontSize;
+            canvas.beginText()
+                    .setFontAndSize(fontBold, fontSize)
+                    .moveText(xInicio + padding, y)
+                    .showText(texto)
+                    .endText();
+            cursor[0] = y - 4f;
+            return cursor[0];
+        };
+
+        // ── NOME DO CLIENTE ─────────────────────────────────
+        escreverLinhaBold.apply(pedido.getNomeCliente().toUpperCase(), 11f);
+
+        // ── DATA ────────────────────────────────────────────
         if (pedido.getData() != null) {
-            doc.add(new Paragraph(pedido.getData().format(FMT))
-                    .setFontSize(8).setFontColor(ColorConstants.GRAY)
-                    .setTextAlignment(TextAlignment.CENTER));
+            escreverLinha.apply(pedido.getData().format(FMT), 8f);
         }
 
-        doc.add(new LineSeparator(new com.itextpdf.kernel.pdf.canvas.draw.DottedLine())
-                .setMarginTop(4).setMarginBottom(4));
+        // ── DATA DE ENTREGA ─────────────────────────────────
+        if (pedido.getDataEntrega() != null) {
+            escreverLinha.apply("Entrega: " + pedido.getDataEntrega()
+                    .format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), 8f);
+        }
 
-        // itens — sem valor total, só nome e quantidade
+        // ── LINHA TRACEJADA ─────────────────────────────────
+        cursor[0] -= 4f;
+        canvas.setLineDash(2, 2)
+                .setLineWidth(0.4f)
+                .setStrokeColor(com.itextpdf.kernel.colors.ColorConstants.GRAY)
+                .moveTo(xInicio + padding, cursor[0])
+                .lineTo(xInicio + largura - padding, cursor[0])
+                .stroke();
+        cursor[0] -= 6f;
+
+        // ── ITENS ───────────────────────────────────────────
         if (pedido.getItens() != null) {
             for (ItemPedido item : pedido.getItens()) {
                 String linha = item.getProduto().getNome()
                         + "  x" + item.getQuantidade().intValue();
-                doc.add(new Paragraph(linha).setFontSize(10).setMarginBottom(2));
+                escreverLinha.apply(linha, 9f);
             }
         }
 
-        // observação
+        // ── OBSERVAÇÃO ──────────────────────────────────────
         if (pedido.getObservacao() != null && !pedido.getObservacao().isBlank()) {
-            doc.add(new LineSeparator(new com.itextpdf.kernel.pdf.canvas.draw.DottedLine())
-                    .setMarginTop(4).setMarginBottom(4));
-            doc.add(new Paragraph("Obs: " + pedido.getObservacao())
-                    .setFontSize(9).setFontColor(ColorConstants.DARK_GRAY));
+            cursor[0] -= 4f;
+            canvas.setLineDash(2, 2)
+                    .setLineWidth(0.4f)
+                    .setStrokeColor(com.itextpdf.kernel.colors.ColorConstants.GRAY)
+                    .moveTo(xInicio + padding, cursor[0])
+                    .lineTo(xInicio + largura - padding, cursor[0])
+                    .stroke();
+            cursor[0] -= 6f;
+
+            escreverLinha.apply("Obs: " + pedido.getObservacao(), 8f);
         }
 
-        doc.close();
+        // ── fecha só o PdfDocument, sem Document wrapper ────
+        canvas.release();
+        pdf.close();
     }
 
     private Cell celulaItem(String texto, TextAlignment align) {

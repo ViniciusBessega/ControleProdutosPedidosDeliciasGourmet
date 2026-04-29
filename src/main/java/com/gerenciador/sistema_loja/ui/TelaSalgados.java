@@ -127,12 +127,18 @@ public class TelaSalgados {
 
             int qAtual = carrinhoService.getItens().getOrDefault(s.getId(), 0);
 
-            Label qtd = new Label(String.valueOf(qAtual));
+            TextField quantidade = new TextField(String.valueOf(qAtual));
+            quantidade.setPrefWidth(45);
+            quantidade.setMaxWidth(45);
+            quantidade.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-alignment: center; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #ffd1dc; -fx-padding: 2 4;");
+            quantidade.textProperty().addListener((obs, o, n) -> {
+                if (!n.matches("\\d{0,3}")) quantidade.setText(o);
+            });
 
             Button menos = BotaoFactory.secundario("-");
             Button mais = BotaoFactory.primario("+");
 
-            HBox controle = new HBox(5, menos, qtd, mais);
+            HBox controle = new HBox(5, menos, quantidade, mais);
             controle.setAlignment(Pos.CENTER);
 
             Region spacer = new Region();
@@ -151,7 +157,14 @@ public class TelaSalgados {
             mais.setOnAction(e -> {
                 carrinhoService.adicionar(s);
                 int q = carrinhoService.getItens().getOrDefault(s.getId(), 0);
-                qtd.setText(String.valueOf(q));
+                quantidade.textProperty().addListener((obs, o, n) -> {
+                    if (!n.matches("\\d{0,3}")) { quantidade.setText(o); return; }
+                    try {
+                        int val = Integer.parseInt(n);
+                        carrinhoService.getItens().put(s.getId(), val);
+                        atualizarTotal(totalLabel);
+                    } catch (Exception ignored) {}
+                });
                 atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);
             });
@@ -159,7 +172,14 @@ public class TelaSalgados {
             menos.setOnAction(e -> {
                 carrinhoService.remover(s);
                 int q = carrinhoService.getItens().getOrDefault(s.getId(), 0);
-                qtd.setText(String.valueOf(q));
+                quantidade.textProperty().addListener((obs, o, n) -> {
+                    if (!n.matches("\\d{0,3}")) { quantidade.setText(o); return; }
+                    try {
+                        int val = Integer.parseInt(n);
+                        carrinhoService.getItens().put(s.getId(), val);
+                        atualizarTotal(totalLabel);
+                    } catch (Exception ignored) {}
+                });
                 atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);
             });

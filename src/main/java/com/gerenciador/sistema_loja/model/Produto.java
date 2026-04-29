@@ -22,6 +22,8 @@ public abstract class Produto {
     private String nome;
 
     @OneToMany(mappedBy = "produto")
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
     private List<ItemPedido> itens;
 
     @Enumerated(EnumType.STRING)

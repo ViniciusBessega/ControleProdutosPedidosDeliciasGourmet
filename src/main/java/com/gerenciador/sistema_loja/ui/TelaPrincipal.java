@@ -123,6 +123,10 @@ public class TelaPrincipal {
         BorderPane.setAlignment(botoesDir, Pos.CENTER);
 
         // ── NOME DO CLIENTE (abaixo do topo, acima do carrinho) ──
+        // ── LABEL + CAMPO NOME ────────────────────────────
+        Label lblNomeCliente = new Label("Nome do cliente");
+        lblNomeCliente.setStyle("-fx-font-size: 11px; -fx-text-fill: #888; -fx-font-weight: bold;");
+
         TextField nomeCliente = new TextField();
         nomeCliente.setPromptText("Nome do cliente");
         nomeCliente.setStyle("""
@@ -133,7 +137,79 @@ public class TelaPrincipal {
             -fx-font-size: 13px;
         """);
 
-        VBox topoComNome = new VBox(10, topoContainer, nomeCliente);
+        VBox campoNomeBox = new VBox(4, lblNomeCliente, nomeCliente);
+        HBox.setHgrow(campoNomeBox, Priority.ALWAYS);
+
+        // ── LABEL + CAMPO DATA ENTREGA ────────────────────
+        Label lblDataEntrega = new Label("Data de entrega");
+        lblDataEntrega.setStyle("-fx-font-size: 11px; -fx-text-fill: #888; -fx-font-weight: bold;");
+
+        // campo de texto para digitar a data
+        TextField campoDataEntregaTexto = new TextField();
+        campoDataEntregaTexto.setPromptText("dd/MM/yyyy");
+        campoDataEntregaTexto.setStyle("""
+            -fx-background-radius: 8;
+            -fx-border-radius: 8;
+            -fx-border-color: #ffd1dc;
+            -fx-padding: 8 12;
+            -fx-font-size: 13px;
+        """);
+        campoDataEntregaTexto.setPrefWidth(140);
+
+        // botão calendário
+        Button btnCalendario = new Button("📅");
+        btnCalendario.setStyle("""
+            -fx-background-color: #ff4d6d;
+            -fx-text-fill: white;
+            -fx-background-radius: 8;
+            -fx-padding: 8 10;
+            -fx-font-size: 13px;
+            -fx-cursor: hand;
+        """);
+
+        // estado da data selecionada
+        java.time.LocalDate[] dataEntregaSelecionada = {null};
+        java.time.format.DateTimeFormatter fmtData = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+        // ao digitar manualmente
+        campoDataEntregaTexto.textProperty().addListener((obs, o, n) -> {
+            try {
+                dataEntregaSelecionada[0] = java.time.LocalDate.parse(n, fmtData);
+                campoDataEntregaTexto.setStyle("""
+                    -fx-background-radius: 8;
+                    -fx-border-radius: 8;
+                    -fx-border-color: #ff4d6d;
+                    -fx-padding: 8 12;
+                    -fx-font-size: 13px;
+                """);
+            } catch (Exception ignored) {
+                dataEntregaSelecionada[0] = null;
+                campoDataEntregaTexto.setStyle("""
+                    -fx-background-radius: 8;
+                    -fx-border-radius: 8;
+                    -fx-border-color: #ffd1dc;
+                    -fx-padding: 8 12;
+                    -fx-font-size: 13px;
+                """);
+            }
+        });
+
+        // popup do calendário
+        btnCalendario.setOnAction(e -> {
+            mostrarPopupCalendario(dataEntregaSelecionada, campoDataEntregaTexto, fmtData);
+        });
+
+        HBox campoDataBox = new HBox(6, campoDataEntregaTexto, btnCalendario);
+        campoDataBox.setAlignment(Pos.CENTER_LEFT);
+
+        VBox dataEntregaBox = new VBox(4, lblDataEntrega, campoDataBox);
+        dataEntregaBox.setMinWidth(190);
+
+        // ── LINHA COM OS DOIS CAMPOS ──────────────────────
+        HBox linhaCliente = new HBox(12, campoNomeBox, dataEntregaBox);
+        linhaCliente.setAlignment(Pos.BOTTOM_LEFT);
+
+        VBox topoComNome = new VBox(10, topoContainer, linhaCliente);
         topoComNome.setPadding(new Insets(15, 15, 10, 15));
 
         root.setTop(topoComNome);
@@ -220,7 +296,8 @@ public class TelaPrincipal {
                 return;
             }
             mostrarPopupFinalizarPedido(nomeCliente.getText().trim(), listaCarrinho, totalLabel,
-                    footerSubtotalBruto, footerDesconto, nomeCliente, campoObservacao);
+                    footerSubtotalBruto, footerDesconto, nomeCliente, campoObservacao,
+                    dataEntregaSelecionada, campoDataEntregaTexto);
         });
 
         Button btnEditarPedido = BotaoFactory.secundario("Editar Pedido");
@@ -560,16 +637,8 @@ public class TelaPrincipal {
                     -fx-cursor: hand;
                 """);
 
-                Label lblQtd = new Label(String.valueOf(qtdProp.get()));
-                lblQtd.setStyle("""
-                    -fx-font-size: 12px;
-                    -fx-font-weight: bold;
-                    -fx-min-width: 18;
-                    -fx-alignment: center;
-                """);
 
-                HBox controle = new HBox(6, btnMenos, lblQtd, btnMais);
-                controle.setAlignment(Pos.CENTER);
+
 
                 // campo preço
                 TextField campoPreco = new TextField(
@@ -597,6 +666,26 @@ public class TelaPrincipal {
                     -fx-font-weight: bold;
                     -fx-text-fill: #333;
                 """);
+
+                TextField lblQtd = new TextField(String.valueOf(qtdProp.get()));
+                lblQtd.setPrefWidth(45);
+                lblQtd.setMaxWidth(45);
+                lblQtd.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-alignment: center; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #ffd1dc; -fx-padding: 2 4;");
+                lblQtd.textProperty().addListener((obs, o, n) -> {
+                    if (!n.matches("\\d{0,3}")) { lblQtd.setText(o); return; }
+                    try {
+                        int val = Integer.parseInt(n);
+                        qtdProp.set(val);
+                        carrinhoService.getItens().put(id, val);
+                        BigDecimal sub = precoProp.get().multiply(BigDecimal.valueOf(val)).setScale(2, RoundingMode.HALF_UP);
+                        lblSub.setText("R$ " + sub);
+                        recalcular.run();
+                        atualizarCarrinho(listaCarrinho, totalLabel);
+                    } catch (Exception ignored) {}
+                });
+
+                HBox controle = new HBox(6, btnMenos, lblQtd, btnMais);
+                controle.setAlignment(Pos.CENTER);
 
                 // ── CALLBACKS ─────────────────────────────────
                 campoPreco.textProperty().addListener((obs, o, n) -> {
@@ -773,7 +862,16 @@ public class TelaPrincipal {
         btnOk.setOnAction(ev -> rootPrincipal.getChildren().remove(overlay));
     }
 
-    private void mostrarPopupFinalizarPedido(String nomeClienteTexto, VBox listaCarrinho, Label totalLabel, Label footerSubtotalBruto, Label footerDesconto, TextField campoNomeCliente, TextArea campoObservacao) {
+    private void mostrarPopupFinalizarPedido(
+            String nomeClienteTexto,
+            VBox listaCarrinho,
+            Label totalLabel,
+            Label footerSubtotalBruto,
+            Label footerDesconto,
+            TextField campoNomeCliente,
+            TextArea campoObservacao,
+            java.time.LocalDate[] dataEntregaSelecionada,
+            TextField campoDataEntregaTexto) {
         // ── CARD ──────────────────────────────────────────────
         BorderPane popup = new BorderPane();
         popup.setMaxWidth(520);
@@ -1055,6 +1153,7 @@ public class TelaPrincipal {
             pedido.setData(java.time.LocalDateTime.now());
             pedido.setDesconto(valorDesc);
             pedido.setObservacao(campoObservacao.getText().trim());
+            pedido.setDataEntrega(dataEntregaSelecionada[0]);
 
             List<ItemPedido> itens = new ArrayList<>();
 
@@ -1099,6 +1198,8 @@ public class TelaPrincipal {
                 totalLabel.setText("TOTAL: R$ 0,00");
                 campoNomeCliente.clear();
                 campoObservacao.clear();
+                campoDataEntregaTexto.clear();
+                dataEntregaSelecionada[0] = null;
                 atualizarCarrinho(listaCarrinho, totalLabel);
 
             // abre popup de PDF
@@ -1227,5 +1328,183 @@ public class TelaPrincipal {
                 erro.showAndWait();
             }
         }
+    }
+
+    private void mostrarPopupCalendario(
+            java.time.LocalDate[] dataEntregaSelecionada,
+            TextField campoDataEntregaTexto,
+            java.time.format.DateTimeFormatter fmtData) {
+
+        // ── CARD ──────────────────────────────────────────
+        VBox popup = new VBox(10);
+        popup.setPadding(new Insets(16));
+        popup.setMaxWidth(300);
+        popup.setMaxHeight(Region.USE_PREF_SIZE);
+        popup.setPrefHeight(Region.USE_COMPUTED_SIZE);
+        popup.setStyle("""
+        -fx-background-color: white;
+        -fx-background-radius: 15;
+        -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 20, 0, 0, 6);
+    """);
+
+        // ── MÊS/ANO NAVEGAÇÃO ─────────────────────────────
+        java.time.LocalDate[] mesAtual = {
+                dataEntregaSelecionada[0] != null
+                        ? dataEntregaSelecionada[0].withDayOfMonth(1)
+                        : java.time.LocalDate.now().withDayOfMonth(1)
+        };
+
+        Label lblMesAno = new Label();
+        lblMesAno.setStyle("-fx-font-size: 13px; -fx-font-weight: bold;");
+
+        Button btnAnterior = new Button("‹");
+        btnAnterior.setStyle("""
+        -fx-background-color: #ffccd5;
+        -fx-background-radius: 20;
+        -fx-font-size: 14px;
+        -fx-cursor: hand;
+        -fx-padding: 2 10;
+    """);
+
+        Button btnProximo = new Button("›");
+        btnProximo.setStyle(btnAnterior.getStyle());
+
+        HBox navMes = new HBox(10, btnAnterior, lblMesAno, btnProximo);
+        navMes.setAlignment(Pos.CENTER);
+
+        // ── GRID DOS DIAS ─────────────────────────────────
+        GridPane gridDias = new GridPane();
+        gridDias.setHgap(4);
+        gridDias.setVgap(4);
+        gridDias.setAlignment(Pos.CENTER);
+
+        // cabeçalho dias da semana
+        String[] diasSemana = {"Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"};
+        for (int i = 0; i < 7; i++) {
+            Label lblDia = new Label(diasSemana[i]);
+            lblDia.setStyle("-fx-font-size: 10px; -fx-text-fill: #aaa; -fx-font-weight: bold;");
+            lblDia.setMinWidth(32);
+            lblDia.setAlignment(Pos.CENTER);
+            gridDias.add(lblDia, i, 0);
+        }
+
+        StackPane overlay = new StackPane(popup);
+        overlay.setStyle("-fx-background-color: rgba(0,0,0,0.4); -fx-focus-color: transparent; -fx-faint-focus-color: transparent;");
+        overlay.setAlignment(Pos.CENTER);
+        overlay.setPrefSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        overlay.setFocusTraversable(false);
+
+        // ── BOTÃO LIMPAR ──────────────────────────────────
+        Button btnLimpar = BotaoFactory.secundario("Limpar");
+        btnLimpar.setMaxWidth(Double.MAX_VALUE);
+        btnLimpar.setOnAction(ev -> {
+            dataEntregaSelecionada[0] = null;
+            campoDataEntregaTexto.clear();
+            campoDataEntregaTexto.setStyle("""
+            -fx-background-radius: 8;
+            -fx-border-radius: 8;
+            -fx-border-color: #ffd1dc;
+            -fx-padding: 8 12;
+            -fx-font-size: 13px;
+        """);
+            rootPrincipal.getChildren().remove(overlay);
+        });
+
+        popup.getChildren().addAll(navMes, gridDias, btnLimpar);
+
+        // ── RENDERIZAR CALENDÁRIO ─────────────────────────
+        Runnable[] renderRef = new Runnable[1];
+        renderRef[0] = () -> {
+            // remove linhas anteriores do grid (mantém cabeçalho linha 0)
+            gridDias.getChildren().removeIf(n -> GridPane.getRowIndex(n) != null && GridPane.getRowIndex(n) > 0);
+
+            java.time.LocalDate primeiro = mesAtual[0];
+            int diaSemanaInicio = primeiro.getDayOfWeek().getValue() % 7; // Dom=0
+
+            lblMesAno.setText(
+                    primeiro.getMonth().getDisplayName(
+                            java.time.format.TextStyle.FULL,
+                            new java.util.Locale("pt", "BR")
+                    ).substring(0, 1).toUpperCase() +
+                            primeiro.getMonth().getDisplayName(
+                                    java.time.format.TextStyle.FULL,
+                                    new java.util.Locale("pt", "BR")
+                            ).substring(1) +
+                            " " + primeiro.getYear()
+            );
+
+            int totalDias = primeiro.lengthOfMonth();
+            int col = diaSemanaInicio;
+            int row = 1;
+
+            for (int dia = 1; dia <= totalDias; dia++) {
+                java.time.LocalDate dataAtual = primeiro.withDayOfMonth(dia);
+                Button btnDia = new Button(String.valueOf(dia));
+                btnDia.setMinWidth(32);
+                btnDia.setMinHeight(32);
+
+                boolean selecionado = dataEntregaSelecionada[0] != null &&
+                        dataEntregaSelecionada[0].equals(dataAtual);
+                boolean hoje = dataAtual.equals(java.time.LocalDate.now());
+
+                if (selecionado) {
+                    btnDia.setStyle("""
+                    -fx-background-color: #ff4d6d;
+                    -fx-text-fill: white;
+                    -fx-background-radius: 20;
+                    -fx-cursor: hand;
+                    -fx-font-weight: bold;
+                """);
+                } else if (hoje) {
+                    btnDia.setStyle("""
+                    -fx-background-color: #ffccd5;
+                    -fx-text-fill: #ff4d6d;
+                    -fx-background-radius: 20;
+                    -fx-cursor: hand;
+                    -fx-font-weight: bold;
+                """);
+                } else {
+                    btnDia.setStyle("""
+                    -fx-background-color: transparent;
+                    -fx-text-fill: #333;
+                    -fx-background-radius: 20;
+                    -fx-cursor: hand;
+                """);
+                }
+
+                btnDia.setOnAction(ev -> {
+                    dataEntregaSelecionada[0] = dataAtual;
+                    campoDataEntregaTexto.setText(dataAtual.format(fmtData));
+                    rootPrincipal.getChildren().remove(overlay);
+                });
+
+                gridDias.add(btnDia, col, row);
+                col++;
+                if (col == 7) { col = 0; row++; }
+            }
+        };
+
+        renderRef[0].run();
+
+        btnAnterior.setOnAction(ev -> {
+            mesAtual[0] = mesAtual[0].minusMonths(1);
+            renderRef[0].run();
+        });
+
+        btnProximo.setOnAction(ev -> {
+            mesAtual[0] = mesAtual[0].plusMonths(1);
+            renderRef[0].run();
+        });
+
+        // ── ANIMAÇÃO ──────────────────────────────────────
+        rootPrincipal.getChildren().add(overlay);
+        popup.setScaleX(0); popup.setScaleY(0);
+        ScaleTransition anim = new ScaleTransition(Duration.millis(200), popup);
+        anim.setToX(1); anim.setToY(1); anim.play();
+
+        overlay.setOnMouseClicked(ev -> {
+            if (ev.getTarget() == overlay)
+                rootPrincipal.getChildren().remove(overlay);
+        });
     }
 }
