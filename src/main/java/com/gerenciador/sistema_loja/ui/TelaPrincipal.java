@@ -127,7 +127,7 @@ public class TelaPrincipal {
         Label lblNomeCliente = new Label("Nome do cliente");
         lblNomeCliente.setStyle("-fx-font-size: 11px; -fx-text-fill: #888; -fx-font-weight: bold;");
 
-        TextField nomeCliente = new TextField();
+        TextField nomeCliente = new TextField(carrinhoService.getNomeCliente());
         nomeCliente.setPromptText("Nome do cliente");
         nomeCliente.setStyle("""
             -fx-background-radius: 8;
@@ -136,6 +136,8 @@ public class TelaPrincipal {
             -fx-padding: 8 12;
             -fx-font-size: 13px;
         """);
+        nomeCliente.textProperty().addListener((obs, o, n) ->
+                carrinhoService.setNomeCliente(n));
 
         VBox campoNomeBox = new VBox(4, lblNomeCliente, nomeCliente);
         HBox.setHgrow(campoNomeBox, Priority.ALWAYS);
@@ -144,8 +146,12 @@ public class TelaPrincipal {
         Label lblDataEntrega = new Label("Data de entrega");
         lblDataEntrega.setStyle("-fx-font-size: 11px; -fx-text-fill: #888; -fx-font-weight: bold;");
 
+        java.time.format.DateTimeFormatter fmtData = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
         // campo de texto para digitar a data
-        TextField campoDataEntregaTexto = new TextField();
+        String dataInicial = carrinhoService.getDataEntrega() != null
+                ? carrinhoService.getDataEntrega().format(fmtData) : "";
+        TextField campoDataEntregaTexto = new TextField(dataInicial);
         campoDataEntregaTexto.setPromptText("dd/MM/yyyy");
         campoDataEntregaTexto.setStyle("""
             -fx-background-radius: 8;
@@ -168,13 +174,14 @@ public class TelaPrincipal {
         """);
 
         // estado da data selecionada
-        java.time.LocalDate[] dataEntregaSelecionada = {null};
-        java.time.format.DateTimeFormatter fmtData = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        java.time.LocalDate[] dataEntregaSelecionada = {carrinhoService.getDataEntrega()};
+
 
         // ao digitar manualmente
         campoDataEntregaTexto.textProperty().addListener((obs, o, n) -> {
             try {
                 dataEntregaSelecionada[0] = java.time.LocalDate.parse(n, fmtData);
+                carrinhoService.setDataEntrega(dataEntregaSelecionada[0]); // adiciona isso
                 campoDataEntregaTexto.setStyle("""
                     -fx-background-radius: 8;
                     -fx-border-radius: 8;
@@ -184,6 +191,7 @@ public class TelaPrincipal {
                 """);
             } catch (Exception ignored) {
                 dataEntregaSelecionada[0] = null;
+                carrinhoService.setDataEntrega(null); // e isso
                 campoDataEntregaTexto.setStyle("""
                     -fx-background-radius: 8;
                     -fx-border-radius: 8;
@@ -440,6 +448,8 @@ public class TelaPrincipal {
 
             Produto p = carrinhoService.getProduto(entry.getKey());
             int q = entry.getValue();
+
+            if (p == null || q <= 0) continue; // 👈 pula entradas inválidas
 
             BigDecimal precoUnit = BigDecimal.ZERO;
             if (p instanceof ProdutoSimples ps) precoUnit = ps.getPreco();
@@ -897,6 +907,15 @@ public class TelaPrincipal {
         );
         lblData.setStyle("-fx-font-size: 11px; -fx-text-fill: #aaa;");
 
+        Label lblDataEntregaPopup = new Label(
+                dataEntregaSelecionada[0] != null
+                        ? "Entrega: " + dataEntregaSelecionada[0].format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                        : ""
+        );
+        lblDataEntregaPopup.setStyle("-fx-font-size: 11px; -fx-text-fill: #ff4d6d; -fx-font-weight: bold;");
+        lblDataEntregaPopup.managedProperty().bind(lblDataEntregaPopup.visibleProperty());
+        lblDataEntregaPopup.setVisible(dataEntregaSelecionada[0] != null);
+
         Label tracejadoTopo = new Label(
                 "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
         );
@@ -933,7 +952,7 @@ public class TelaPrincipal {
         headerGrid.add(hU, 2, 0);
         headerGrid.add(hS, 3, 0);
 
-        VBox topo = new VBox(6, lblCliente, lblData, tracejadoTopo, headerGrid);
+        VBox topo = new VBox(6, lblCliente, lblData, lblDataEntregaPopup, tracejadoTopo, headerGrid);
         topo.setPadding(new Insets(16, 16, 6, 16));
         topo.setStyle("""
             -fx-background-color: white;

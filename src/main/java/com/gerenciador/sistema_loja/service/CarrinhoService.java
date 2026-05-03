@@ -3,6 +3,7 @@ package com.gerenciador.sistema_loja.service;
 import com.gerenciador.sistema_loja.model.Produto;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -48,5 +49,20 @@ public class CarrinhoService {
     public void limpar() {
         itens.clear();
         produtos.clear();
+        nomeCliente = "";
+        dataEntrega = null;
     }
+
+    public Map<Long, Produto> getProdutos() {
+        return produtos;
+    }
+
+    private String nomeCliente = "";
+    private java.time.LocalDate dataEntrega = null;
+
+    public String getNomeCliente() { return nomeCliente; }
+    public void setNomeCliente(String nome) { this.nomeCliente = nome; }
+
+    public java.time.LocalDate getDataEntrega() { return dataEntrega; }
+    public void setDataEntrega(java.time.LocalDate data) { this.dataEntrega = data; }
 }

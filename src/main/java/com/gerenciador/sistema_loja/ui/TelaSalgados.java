@@ -20,7 +20,9 @@ import javafx.util.Duration;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TelaSalgados {
 
@@ -29,6 +31,9 @@ public class TelaSalgados {
     private CarrinhoService carrinhoService;
     private PedidoService pedidoService;
     private PedidoPdfService pedidoPdfService;
+
+    private final Map<Long, Integer> qtdLocal = new HashMap<>();
+    private final Map<Long, Produto> produtosLocal = new HashMap<>();
 
     public TelaSalgados(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService, PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
         this.rootPrincipal = rootPrincipal;
@@ -91,7 +96,13 @@ public class TelaSalgados {
         """);
 
         Button btnCarrinho = BotaoFactory.primario("Adicionar ao carrinho");
-        btnCarrinho.setOnAction(e -> mostrarPopupCarrinho());
+        btnCarrinho.setOnAction(e -> {
+            for (var entry : qtdLocal.entrySet()) {
+                carrinhoService.getItens().put(entry.getKey(), entry.getValue());
+                carrinhoService.getProdutos().put(entry.getKey(), produtosLocal.get(entry.getKey()));
+            }
+            mostrarPopupCarrinho();
+        });
 
         HBox footer = new HBox(20, totalLabel, btnCarrinho);
         footer.setAlignment(Pos.CENTER_RIGHT);
@@ -125,12 +136,13 @@ public class TelaSalgados {
 
             Label preco = new Label("R$ " + s.getPreco());
 
-            int qAtual = carrinhoService.getItens().getOrDefault(s.getId(), 0);
+            int qAtual = qtdLocal.getOrDefault(s.getId(), 0);
 
             TextField quantidade = new TextField(String.valueOf(qAtual));
             quantidade.setPrefWidth(45);
             quantidade.setMaxWidth(45);
             quantidade.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-alignment: center; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #ffd1dc; -fx-padding: 2 4;");
+
             quantidade.textProperty().addListener((obs, o, n) -> {
                 if (!n.matches("\\d{0,3}")) quantidade.setText(o);
             });
@@ -144,42 +156,50 @@ public class TelaSalgados {
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
 
-            HBox linha = new HBox(10,
-                    new VBox(nome, preco),
-                    spacer,
-                    controle
-            );
+            HBox linha = new HBox(10, new VBox(nome, preco), spacer, controle);
             linha.setPadding(new Insets(10));
             linha.setAlignment(Pos.CENTER_LEFT);
-
             atualizarCorLinha(linha, qAtual);
 
+            Runnable aplicarQuantidade = () -> {
+                try {
+                    int val = Integer.parseInt(quantidade.getText());
+                    if (val <= 0) {
+                        qtdLocal.remove(s.getId());
+                        produtosLocal.remove(s.getId());
+                    } else {
+                        qtdLocal.put(s.getId(), val);
+                        produtosLocal.put(s.getId(), s);
+                    }
+                    atualizarCorLinha(linha, val);
+                    atualizarTotal(totalLabel);
+                } catch (Exception ignored) {}
+            };
+
+            quantidade.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+                if (!isNowFocused) aplicarQuantidade.run();
+            });
+            quantidade.setOnAction(e -> aplicarQuantidade.run());
+
             mais.setOnAction(e -> {
-                carrinhoService.adicionar(s);
-                int q = carrinhoService.getItens().getOrDefault(s.getId(), 0);
-                quantidade.textProperty().addListener((obs, o, n) -> {
-                    if (!n.matches("\\d{0,3}")) { quantidade.setText(o); return; }
-                    try {
-                        int val = Integer.parseInt(n);
-                        carrinhoService.getItens().put(s.getId(), val);
-                        atualizarTotal(totalLabel);
-                    } catch (Exception ignored) {}
-                });
+                int q = qtdLocal.getOrDefault(s.getId(), 0) + 1;
+                qtdLocal.put(s.getId(), q);
+                produtosLocal.put(s.getId(), s);
+                quantidade.setText(String.valueOf(q));
                 atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);
             });
 
             menos.setOnAction(e -> {
-                carrinhoService.remover(s);
-                int q = carrinhoService.getItens().getOrDefault(s.getId(), 0);
-                quantidade.textProperty().addListener((obs, o, n) -> {
-                    if (!n.matches("\\d{0,3}")) { quantidade.setText(o); return; }
-                    try {
-                        int val = Integer.parseInt(n);
-                        carrinhoService.getItens().put(s.getId(), val);
-                        atualizarTotal(totalLabel);
-                    } catch (Exception ignored) {}
-                });
+                int q = qtdLocal.getOrDefault(s.getId(), 0) - 1;
+                if (q <= 0) {
+                    qtdLocal.remove(s.getId());
+                    produtosLocal.remove(s.getId());
+                    q = 0;
+                } else {
+                    qtdLocal.put(s.getId(), q);
+                }
+                quantidade.setText(String.valueOf(q));
                 atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);
             });
@@ -209,22 +229,13 @@ public class TelaSalgados {
     }
 
     private void atualizarTotal(Label totalLabel) {
-
-        BigDecimal total = carrinhoService.getItens().entrySet().stream()
-                .reduce(BigDecimal.ZERO, (acc, e) -> {
-                    Produto p = carrinhoService.getProduto(e.getKey());
-                    BigDecimal q = BigDecimal.valueOf(e.getValue());
-
-                    if (p instanceof ProdutoSimples ps) {
-                        return acc.add(ps.getPreco().multiply(q));
-                    }
-                    if (p instanceof Torta t) {
-                        return acc.add(t.getPrecoPorKg().multiply(q));
-                    }
-                    return acc;
-                }, BigDecimal::add);
-
-        int qtd = carrinhoService.getItens().values().stream().mapToInt(i -> i).sum();
+        BigDecimal total = BigDecimal.ZERO;
+        for (var entry : qtdLocal.entrySet()) {
+            Produto p = produtosLocal.get(entry.getKey());
+            if (p instanceof ProdutoSimples ps)
+                total = total.add(ps.getPreco().multiply(BigDecimal.valueOf(entry.getValue())));
+        }
+        int qtd = qtdLocal.values().stream().mapToInt(i -> i).sum();
         totalLabel.setText("Itens: " + qtd + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
     }
 
@@ -243,21 +254,18 @@ public class TelaSalgados {
         VBox lista = new VBox(5);
         BigDecimal total = BigDecimal.ZERO;
 
-        for (var e : carrinhoService.getItens().entrySet()) {
-            Produto p = carrinhoService.getProduto(e.getKey());
-            BigDecimal q = BigDecimal.valueOf(e.getValue());
+        for (var entry : carrinhoService.getItens().entrySet()) {
+            Long id = entry.getKey();
+            BigDecimal q = BigDecimal.valueOf(entry.getValue());
+            Produto p = carrinhoService.getProduto(id);
 
             BigDecimal sub = BigDecimal.ZERO;
-            if (p instanceof ProdutoSimples ps) {
-                sub = ps.getPreco().multiply(q);
-            } else if (p instanceof Torta t) {
-                sub = t.getPrecoPorKg().multiply(q);
-            }
+            if (p instanceof ProdutoSimples ps) sub = ps.getPreco().multiply(q);
+            else if (p instanceof Torta t) sub = t.getPrecoPorKg().multiply(q);
 
             total = total.add(sub);
-
             lista.getChildren().add(new Label(
-                    p.getNome() + " x" + e.getValue() + " - R$ " + sub.setScale(2, RoundingMode.HALF_UP)
+                    p.getNome() + " x" + entry.getValue() + " - R$ " + sub.setScale(2, RoundingMode.HALF_UP)
             ));
         }
 
@@ -266,8 +274,6 @@ public class TelaSalgados {
 
         Button ok = BotaoFactory.primario("Confirmar");
         Button cancelar = BotaoFactory.secundario("Cancelar");
-
-        ok.setOnAction(e -> voltar());
 
         HBox botoes = new HBox(10, ok, cancelar);
         botoes.setAlignment(Pos.CENTER);
@@ -290,11 +296,35 @@ public class TelaSalgados {
         anim.setToY(1);
         anim.play();
 
+        ok.setOnAction(e -> {
+            rootPrincipal.getChildren().remove(overlay);
+            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
+            rootPrincipal.getChildren().setAll(tela.criarTela());
+        });
+
         cancelar.setOnAction(e -> rootPrincipal.getChildren().remove(overlay));
     }
 
     private void voltar() {
-        TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
-        rootPrincipal.getChildren().setAll(tela.criarTela());
+        if (!qtdLocal.isEmpty()) {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("Voltar");
+            confirm.setHeaderText("Você tem itens não adicionados ao carrinho.");
+            confirm.setContentText("Ao voltar, os itens selecionados aqui serão descartados. Deseja continuar?");
+
+            ButtonType btnSim = new ButtonType("Sim, descartar");
+            ButtonType btnNao = new ButtonType("Não, continuar", ButtonBar.ButtonData.CANCEL_CLOSE);
+            confirm.getButtonTypes().setAll(btnSim, btnNao);
+
+            confirm.showAndWait().ifPresent(resp -> {
+                if (resp == btnSim) {
+                    TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
+                    rootPrincipal.getChildren().setAll(tela.criarTela());
+                }
+            });
+        } else {
+            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
+            rootPrincipal.getChildren().setAll(tela.criarTela());
+        }
     }
 }

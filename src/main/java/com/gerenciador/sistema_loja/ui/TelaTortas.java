@@ -20,7 +20,9 @@ import javafx.util.Duration;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TelaTortas {
 
@@ -29,6 +31,9 @@ public class TelaTortas {
     private CarrinhoService carrinhoService;
     private PedidoService pedidoService;
     private PedidoPdfService pedidoPdfService;
+
+    private final Map<Long, BigDecimal> qtdLocal = new HashMap<>();
+    private final Map<Long, Produto> produtosLocal = new HashMap<>();
 
     public TelaTortas(StackPane rootPrincipal, ProdutoService service,
                       CarrinhoService carrinhoService, PedidoService pedidoService,
@@ -93,7 +98,14 @@ public class TelaTortas {
         """);
 
         Button btnCarrinho = BotaoFactory.primario("Adicionar ao carrinho");
-        btnCarrinho.setOnAction(e -> mostrarPopupCarrinho());
+        btnCarrinho.setOnAction(e -> {
+            for (var entry : qtdLocal.entrySet()) {
+                // guarda como inteiro (qtd * 2) para manter compatibilidade com o carrinho
+                carrinhoService.getItens().put(entry.getKey(), entry.getValue().multiply(BigDecimal.TWO).intValue());
+                carrinhoService.getProdutos().put(entry.getKey(), produtosLocal.get(entry.getKey()));
+            }
+            mostrarPopupCarrinho();
+        });
 
         HBox footer = new HBox(20, totalLabel, btnCarrinho);
         footer.setAlignment(Pos.CENTER_RIGHT);
@@ -127,18 +139,23 @@ public class TelaTortas {
 
             Label preco = new Label("R$ " + t.getPrecoPorKg() + " /kg");
 
-            int qAtual = carrinhoService.getItens().getOrDefault(t.getId(), 0);
-
-            TextField quantidade = new TextField(String.valueOf(qAtual));
-            quantidade.setPrefWidth(45);
-            quantidade.setMaxWidth(45);
-            quantidade.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-alignment: center; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #ffd1dc; -fx-padding: 2 4;");
-            quantidade.textProperty().addListener((obs, o, n) -> {
-                if (!n.matches("\\d{0,3}")) quantidade.setText(o);
-            });
+            BigDecimal[] qtdTorta = { qtdLocal.getOrDefault(t.getId(), BigDecimal.ZERO) };
 
             Button menos = BotaoFactory.secundario("-");
-            Button mais = BotaoFactory.primario("+");
+            Button mais  = BotaoFactory.primario("+");
+
+            TextField quantidade = new TextField(qtdTorta[0].compareTo(BigDecimal.ZERO) == 0
+                    ? "0" : qtdTorta[0].stripTrailingZeros().toPlainString());
+            quantidade.setPrefWidth(50);
+            quantidade.setMaxWidth(50);
+            quantidade.setStyle("""
+                -fx-font-size: 13px; -fx-font-weight: bold; -fx-alignment: center;
+                -fx-background-radius: 6; -fx-border-radius: 6;
+                -fx-border-color: #ffd1dc; -fx-padding: 2 4;
+            """);
+            quantidade.textProperty().addListener((obs, o, n) -> {
+                if (!n.matches("\\d{0,3}([.,]\\d?)?")) quantidade.setText(o);
+            });
 
             HBox controle = new HBox(5, menos, quantidade, mais);
             controle.setAlignment(Pos.CENTER);
@@ -146,43 +163,55 @@ public class TelaTortas {
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
 
-            HBox linha = new HBox(10,
-                    new VBox(nome, preco),
-                    spacer,
-                    controle
-            );
+            HBox linha = new HBox(10, new VBox(nome, preco), spacer, controle);
             linha.setPadding(new Insets(10));
             linha.setAlignment(Pos.CENTER_LEFT);
+            atualizarCorLinha(linha, qtdTorta[0].compareTo(BigDecimal.ZERO) > 0 ? 1 : 0);
 
-            atualizarCorLinha(linha, qAtual);
+            Runnable aplicarQuantidade = () -> {
+                try {
+                    BigDecimal val = new BigDecimal(quantidade.getText().replace(",", "."));
+                    if (val.compareTo(BigDecimal.ZERO) <= 0) {
+                        qtdTorta[0] = BigDecimal.ZERO;
+                        qtdLocal.remove(t.getId());
+                        produtosLocal.remove(t.getId());
+                    } else {
+                        qtdTorta[0] = val;
+                        qtdLocal.put(t.getId(), val);
+                        produtosLocal.put(t.getId(), t);
+                    }
+                    atualizarCorLinha(linha, qtdTorta[0].compareTo(BigDecimal.ZERO) > 0 ? 1 : 0);
+                    atualizarTotal(totalLabel);
+                } catch (Exception ignored) {}
+            };
+
+            quantidade.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+                if (!isNowFocused) aplicarQuantidade.run();
+            });
+            quantidade.setOnAction(e -> aplicarQuantidade.run());
 
             mais.setOnAction(e -> {
-                carrinhoService.adicionar(t);
-                int q = carrinhoService.getItens().getOrDefault(t.getId(), 0);
-                quantidade.textProperty().addListener((obs, o, n) -> {
-                    if (!n.matches("\\d{0,3}")) { quantidade.setText(o); return; }
-                    try {
-                        int val = Integer.parseInt(n);
-                        carrinhoService.getItens().put(t.getId(), val);
-                        atualizarTotal(totalLabel);
-                    } catch (Exception ignored) {}
-                });
-                atualizarCorLinha(linha, q);
+                qtdTorta[0] = qtdTorta[0].add(new BigDecimal("0.5"));
+                qtdLocal.put(t.getId(), qtdTorta[0]);
+                produtosLocal.put(t.getId(), t);
+                quantidade.setText(qtdTorta[0].stripTrailingZeros().toPlainString());
+                atualizarCorLinha(linha, 1);
                 atualizarTotal(totalLabel);
             });
 
             menos.setOnAction(e -> {
-                carrinhoService.remover(t);
-                int q = carrinhoService.getItens().getOrDefault(t.getId(), 0);
-                quantidade.textProperty().addListener((obs, o, n) -> {
-                    if (!n.matches("\\d{0,3}")) { quantidade.setText(o); return; }
-                    try {
-                        int val = Integer.parseInt(n);
-                        carrinhoService.getItens().put(t.getId(), val);
-                        atualizarTotal(totalLabel);
-                    } catch (Exception ignored) {}
-                });
-                atualizarCorLinha(linha, q);
+                if (qtdTorta[0].compareTo(new BigDecimal("0.5")) <= 0) {
+                    qtdTorta[0] = BigDecimal.ZERO;
+                    qtdLocal.remove(t.getId());
+                    produtosLocal.remove(t.getId());
+                    quantidade.setText("0");
+                    atualizarCorLinha(linha, 0);
+                } else {
+                    qtdTorta[0] = qtdTorta[0].subtract(new BigDecimal("0.5"));
+                    qtdLocal.put(t.getId(), qtdTorta[0]);
+                    quantidade.setText(qtdTorta[0].stripTrailingZeros().toPlainString());
+                    atualizarCorLinha(linha, 1);
+                }
                 atualizarTotal(totalLabel);
             });
 
@@ -211,23 +240,17 @@ public class TelaTortas {
     }
 
     private void atualizarTotal(Label totalLabel) {
-
-        BigDecimal total = carrinhoService.getItens().entrySet().stream()
-                .reduce(BigDecimal.ZERO, (acc, e) -> {
-                    Produto p = carrinhoService.getProduto(e.getKey());
-                    BigDecimal q = BigDecimal.valueOf(e.getValue());
-
-                    if (p instanceof ProdutoSimples ps) {
-                        return acc.add(ps.getPreco().multiply(q));
-                    }
-                    if (p instanceof Torta t) {
-                        return acc.add(t.getPrecoPorKg().multiply(q));
-                    }
-                    return acc;
-                }, BigDecimal::add);
-
-        int qtd = carrinhoService.getItens().values().stream().mapToInt(i -> i).sum();
-        totalLabel.setText("Itens: " + qtd + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
+        BigDecimal total = BigDecimal.ZERO;
+        for (var entry : qtdLocal.entrySet()) {
+            Produto p = produtosLocal.get(entry.getKey());
+            if (p instanceof Torta t)
+                total = total.add(t.getPrecoPorKg().multiply(entry.getValue()));
+        }
+        // soma de qtd para exibir "itens" (usa o valor real, não *2)
+        BigDecimal totalQtd = qtdLocal.values().stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        totalLabel.setText("Itens: " + totalQtd.stripTrailingZeros().toPlainString()
+                + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
     }
 
     private void mostrarPopupCarrinho() {
@@ -245,21 +268,17 @@ public class TelaTortas {
         VBox lista = new VBox(5);
         BigDecimal total = BigDecimal.ZERO;
 
-        for (var e : carrinhoService.getItens().entrySet()) {
-            Produto p = carrinhoService.getProduto(e.getKey());
-            BigDecimal q = BigDecimal.valueOf(e.getValue());
+        for (var entry : qtdLocal.entrySet()) {
+            Produto p = produtosLocal.get(entry.getKey());
+            BigDecimal qtd = entry.getValue();
 
             BigDecimal sub = BigDecimal.ZERO;
-            if (p instanceof ProdutoSimples ps) {
-                sub = ps.getPreco().multiply(q);
-            } else if (p instanceof Torta t) {
-                sub = t.getPrecoPorKg().multiply(q);
-            }
+            if (p instanceof Torta t) sub = t.getPrecoPorKg().multiply(qtd);
 
             total = total.add(sub);
-
             lista.getChildren().add(new Label(
-                    p.getNome() + " x" + e.getValue() + " - R$ " + sub.setScale(2, RoundingMode.HALF_UP)
+                    p.getNome() + " x" + qtd.stripTrailingZeros().toPlainString()
+                            + " kg - R$ " + sub.setScale(2, RoundingMode.HALF_UP)
             ));
         }
 
@@ -268,8 +287,6 @@ public class TelaTortas {
 
         Button ok = BotaoFactory.primario("Confirmar");
         Button cancelar = BotaoFactory.secundario("Cancelar");
-
-        ok.setOnAction(e -> voltar());
 
         HBox botoes = new HBox(10, ok, cancelar);
         botoes.setAlignment(Pos.CENTER);
@@ -292,11 +309,35 @@ public class TelaTortas {
         anim.setToY(1);
         anim.play();
 
+        ok.setOnAction(e -> {
+            rootPrincipal.getChildren().remove(overlay);
+            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
+            rootPrincipal.getChildren().setAll(tela.criarTela());
+        });
+
         cancelar.setOnAction(e -> rootPrincipal.getChildren().remove(overlay));
     }
 
     private void voltar() {
-        TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
-        rootPrincipal.getChildren().setAll(tela.criarTela());
+        if (!qtdLocal.isEmpty()) {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("Voltar");
+            confirm.setHeaderText("Você tem itens não adicionados ao carrinho.");
+            confirm.setContentText("Ao voltar, os itens selecionados aqui serão descartados. Deseja continuar?");
+
+            ButtonType btnSim = new ButtonType("Sim, descartar");
+            ButtonType btnNao = new ButtonType("Não, continuar", ButtonBar.ButtonData.CANCEL_CLOSE);
+            confirm.getButtonTypes().setAll(btnSim, btnNao);
+
+            confirm.showAndWait().ifPresent(resp -> {
+                if (resp == btnSim) {
+                    TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
+                    rootPrincipal.getChildren().setAll(tela.criarTela());
+                }
+            });
+        } else {
+            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
+            rootPrincipal.getChildren().setAll(tela.criarTela());
+        }
     }
 }

@@ -20,6 +20,7 @@ import javafx.util.Duration;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +31,9 @@ public class TelaDoces {
     private CarrinhoService carrinhoService;
     private PedidoService pedidoService;
     private PedidoPdfService pedidoPdfService;
+
+    private final Map<Long, Integer> qtdLocal = new HashMap<>();
+    private final Map<Long, Produto> produtosLocal = new HashMap<>();
 
     public TelaDoces(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService, PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
         this.rootPrincipal = rootPrincipal;
@@ -42,14 +46,12 @@ public class TelaDoces {
     public Parent criarTela() {
 
         BorderPane root = new BorderPane();
-
         root.setStyle("""
             -fx-background-color: #ffe4ec;
             -fx-focus-color: transparent;
             -fx-faint-focus-color: transparent;
         """);
 
-        // 🔹 LOGO
         ImageView logo = new ImageView(new Image("/logo.png"));
         logo.setFitHeight(150);
         logo.setPreserveRatio(true);
@@ -59,12 +61,8 @@ public class TelaDoces {
         logoBox.setStyle("-fx-cursor: hand;");
         logoBox.setOnMouseClicked(e -> rootPrincipal.getChildren().setAll(this.criarTela()));
 
-        // 🔙 VOLTAR
         Button btnVoltar = BotaoFactory.secundario("← Voltar");
-        btnVoltar.setOnAction(e -> {
-            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
-            rootPrincipal.getChildren().setAll(tela.criarTela());
-        });
+        btnVoltar.setOnAction(e -> voltar());
 
         Label titulo = new Label("Doces");
         titulo.setStyle("-fx-font-size: 22px; -fx-font-weight: bold;");
@@ -86,18 +84,16 @@ public class TelaDoces {
         VBox lista = new VBox(10);
         lista.setPadding(new Insets(0, 0, 80, 0));
 
-        Label totalLabel = new Label("Itens: 0   Total: R$ 0.0");
+        Label totalLabel = new Label("Itens: 0   Total: R$ 0,00");
 
         atualizarLista(lista, "", totalLabel);
 
-        campoBusca.textProperty().addListener((obs, oldVal, newVal) -> {
-            atualizarLista(lista, newVal, totalLabel);
-        });
+        campoBusca.textProperty().addListener((obs, oldVal, newVal) ->
+                atualizarLista(lista, newVal, totalLabel));
 
         ScrollPane scroll = new ScrollPane(lista);
         scroll.setFitToWidth(true);
         scroll.setFocusTraversable(false);
-
         scroll.setStyle("""
             -fx-background: #ffe4ec;
             -fx-background-color: #ffe4ec;
@@ -105,7 +101,13 @@ public class TelaDoces {
         """);
 
         Button btnCarrinho = BotaoFactory.primario("Adicionar ao carrinho");
-        btnCarrinho.setOnAction(e -> mostrarPopupCarrinho());
+        btnCarrinho.setOnAction(e -> {
+            for (var entry : qtdLocal.entrySet()) {
+                carrinhoService.getItens().put(entry.getKey(), entry.getValue());
+                carrinhoService.getProdutos().put(entry.getKey(), produtosLocal.get(entry.getKey()));
+            }
+            mostrarPopupCarrinho();
+        });
 
         HBox footer = new HBox(20, totalLabel, btnCarrinho);
         footer.setAlignment(Pos.CENTER_RIGHT);
@@ -130,7 +132,6 @@ public class TelaDoces {
 
         if (textoBusca != null && !textoBusca.isBlank()) {
             String busca = textoBusca.toLowerCase();
-
             doces = doces.stream()
                     .filter(d -> d.getNome().toLowerCase().contains(busca))
                     .toList();
@@ -143,12 +144,13 @@ public class TelaDoces {
 
             Label preco = new Label("R$ " + doce.getPreco());
 
-            int qAtual = carrinhoService.getItens().getOrDefault(doce.getId(), 0);
+            int qAtual = qtdLocal.getOrDefault(doce.getId(), 0);
 
             TextField quantidade = new TextField(String.valueOf(qAtual));
             quantidade.setPrefWidth(45);
             quantidade.setMaxWidth(45);
             quantidade.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-alignment: center; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #ffd1dc; -fx-padding: 2 4;");
+
             quantidade.textProperty().addListener((obs, o, n) -> {
                 if (!n.matches("\\d{0,3}")) quantidade.setText(o);
             });
@@ -162,52 +164,49 @@ public class TelaDoces {
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
 
-            HBox linha = new HBox(10,
-                    new VBox(nome, preco),
-                    spacer,
-                    controle
-            );
-
+            HBox linha = new HBox(10, new VBox(nome, preco), spacer, controle);
             linha.setPadding(new Insets(10));
-
             atualizarCorLinha(linha, qAtual);
 
-            btnMais.setOnAction(e -> {
-                carrinhoService.adicionar(doce);
-
-                int q = carrinhoService.getItens().getOrDefault(doce.getId(), 0);
-                quantidade.setText(String.valueOf(q));
-                // adiciona isso depois do setText nos dois botões:
-                quantidade.textProperty().addListener((obs, o, n) -> {
-                    if (!n.matches("\\d{0,3}")) quantidade.setText(o);
-                    else {
-                        try {
-                            int val = Integer.parseInt(n);
-                            carrinhoService.getItens().put(doce.getId(), val);
-                            atualizarTotal(totalLabel);
-                        } catch (Exception ignored) {}
+            Runnable aplicarQuantidade = () -> {
+                try {
+                    int val = Integer.parseInt(quantidade.getText());
+                    if (val <= 0) {
+                        qtdLocal.remove(doce.getId());
+                        produtosLocal.remove(doce.getId());
+                    } else {
+                        qtdLocal.put(doce.getId(), val);
+                        produtosLocal.put(doce.getId(), doce);
                     }
-                });
+                    atualizarCorLinha(linha, val);
+                    atualizarTotal(totalLabel);
+                } catch (Exception ignored) {}
+            };
 
+            quantidade.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+                if (!isNowFocused) aplicarQuantidade.run();
+            });
+            quantidade.setOnAction(e -> aplicarQuantidade.run());
+
+            btnMais.setOnAction(e -> {
+                int q = qtdLocal.getOrDefault(doce.getId(), 0) + 1;
+                qtdLocal.put(doce.getId(), q);
+                produtosLocal.put(doce.getId(), doce);
+                quantidade.setText(String.valueOf(q));
                 atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);
             });
 
             btnMenos.setOnAction(e -> {
-                carrinhoService.remover(doce);
-
-                int q = carrinhoService.getItens().getOrDefault(doce.getId(), 0);
+                int q = qtdLocal.getOrDefault(doce.getId(), 0) - 1;
+                if (q <= 0) {
+                    qtdLocal.remove(doce.getId());
+                    produtosLocal.remove(doce.getId());
+                    q = 0;
+                } else {
+                    qtdLocal.put(doce.getId(), q);
+                }
                 quantidade.setText(String.valueOf(q));
-                // adiciona isso depois do setText nos dois botões:
-                quantidade.textProperty().addListener((obs, o, n) -> {
-                    if (!n.matches("\\d{0,3}")) { quantidade.setText(o); return; }
-                    try {
-                        int val = Integer.parseInt(n);
-                        carrinhoService.getItens().put(doce.getId(), val);
-                        atualizarTotal(totalLabel);
-                    } catch (Exception ignored) {}
-                });
-
                 atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);
             });
@@ -237,23 +236,14 @@ public class TelaDoces {
     }
 
     private void atualizarTotal(Label totalLabel) {
-
-        BigDecimal total = carrinhoService.getItens().entrySet().stream()
-                .reduce(BigDecimal.ZERO, (acc, e) -> {
-                    Produto p = carrinhoService.getProduto(e.getKey());
-                    BigDecimal q = BigDecimal.valueOf(e.getValue());
-
-                    if (p instanceof ProdutoSimples ps) {
-                        return acc.add(ps.getPreco().multiply(q));
-                    }
-                    if (p instanceof Torta t) {
-                        return acc.add(t.getPrecoPorKg().multiply(q));
-                    }
-                    return acc;
-                }, BigDecimal::add);
-
-        int quantidadeTotal = carrinhoService.getItens().values().stream().mapToInt(i -> i).sum();
-        totalLabel.setText("Itens: " + quantidadeTotal + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
+        BigDecimal total = BigDecimal.ZERO;
+        for (var entry : qtdLocal.entrySet()) {
+            Produto p = produtosLocal.get(entry.getKey());
+            if (p instanceof ProdutoSimples ps)
+                total = total.add(ps.getPreco().multiply(BigDecimal.valueOf(entry.getValue())));
+        }
+        int qtd = qtdLocal.values().stream().mapToInt(i -> i).sum();
+        totalLabel.setText("Itens: " + qtd + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
     }
 
     private void mostrarPopupCarrinho() {
@@ -261,7 +251,7 @@ public class TelaDoces {
         VBox popup = new VBox(10);
         popup.setPadding(new Insets(25));
         popup.setMaxWidth(350);
-        popup.setStyle("-fx-background-color: white;-fx-background-radius: 15;");
+        popup.setStyle("-fx-background-color: white; -fx-background-radius: 15;");
         popup.setMaxHeight(Region.USE_PREF_SIZE);
         popup.setPrefHeight(Region.USE_COMPUTED_SIZE);
 
@@ -269,26 +259,20 @@ public class TelaDoces {
         titulo.setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
 
         VBox lista = new VBox(5);
-
         BigDecimal total = BigDecimal.ZERO;
 
         for (var entry : carrinhoService.getItens().entrySet()) {
             Long id = entry.getKey();
             BigDecimal q = BigDecimal.valueOf(entry.getValue());
-
             Produto p = carrinhoService.getProduto(id);
 
             BigDecimal subtotal = BigDecimal.ZERO;
-            if (p instanceof ProdutoSimples ps) {
-                subtotal = ps.getPreco().multiply(q);
-            } else if (p instanceof Torta t) {
-                subtotal = t.getPrecoPorKg().multiply(q);
-            }
+            if (p instanceof ProdutoSimples ps) subtotal = ps.getPreco().multiply(q);
+            else if (p instanceof Torta t) subtotal = t.getPrecoPorKg().multiply(q);
 
             total = total.add(subtotal);
-
             lista.getChildren().add(new Label(
-                    p.getNome() + " x" + q + " - R$ " + subtotal.setScale(2, RoundingMode.HALF_UP)
+                    p.getNome() + " x" + q.intValue() + " - R$ " + subtotal.setScale(2, RoundingMode.HALF_UP)
             ));
         }
 
@@ -311,15 +295,6 @@ public class TelaDoces {
 
         rootPrincipal.getChildren().add(overlay);
 
-        cancelar.setOnAction(e -> rootPrincipal.getChildren().remove(overlay));
-
-        confirmar.setOnAction(e -> {
-            rootPrincipal.getChildren().remove(overlay);
-
-            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
-            rootPrincipal.getChildren().setAll(tela.criarTela());
-        });
-
         popup.setScaleX(0);
         popup.setScaleY(0);
 
@@ -327,5 +302,36 @@ public class TelaDoces {
         anim.setToX(1);
         anim.setToY(1);
         anim.play();
+
+        cancelar.setOnAction(e -> rootPrincipal.getChildren().remove(overlay));
+
+        confirmar.setOnAction(e -> {
+            rootPrincipal.getChildren().remove(overlay);
+            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
+            rootPrincipal.getChildren().setAll(tela.criarTela());
+        });
+    }
+
+    private void voltar() {
+        if (!qtdLocal.isEmpty()) {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("Voltar");
+            confirm.setHeaderText("Você tem itens não adicionados ao carrinho.");
+            confirm.setContentText("Ao voltar, os itens selecionados aqui serão descartados. Deseja continuar?");
+
+            ButtonType btnSim = new ButtonType("Sim, descartar");
+            ButtonType btnNao = new ButtonType("Não, continuar", ButtonBar.ButtonData.CANCEL_CLOSE);
+            confirm.getButtonTypes().setAll(btnSim, btnNao);
+
+            confirm.showAndWait().ifPresent(resp -> {
+                if (resp == btnSim) {
+                    TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
+                    rootPrincipal.getChildren().setAll(tela.criarTela());
+                }
+            });
+        } else {
+            TelaPrincipal tela = new TelaPrincipal(rootPrincipal, service, carrinhoService, pedidoService, pedidoPdfService);
+            rootPrincipal.getChildren().setAll(tela.criarTela());
+        }
     }
 }
