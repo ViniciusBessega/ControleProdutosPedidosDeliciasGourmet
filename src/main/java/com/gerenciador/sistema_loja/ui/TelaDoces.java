@@ -32,10 +32,11 @@ public class TelaDoces {
     private PedidoService pedidoService;
     private PedidoPdfService pedidoPdfService;
 
-    private final Map<Long, Integer> qtdLocal = new HashMap<>();
+    private final Map<Long, BigDecimal> qtdLocal = new HashMap<>();
     private final Map<Long, Produto> produtosLocal = new HashMap<>();
 
-    public TelaDoces(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService, PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
+    public TelaDoces(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService,
+                     PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
         this.rootPrincipal = rootPrincipal;
         this.service = service;
         this.carrinhoService = carrinhoService;
@@ -144,9 +145,10 @@ public class TelaDoces {
 
             Label preco = new Label("R$ " + doce.getPreco());
 
-            int qAtual = qtdLocal.getOrDefault(doce.getId(), 0);
+            BigDecimal qAtual = qtdLocal.getOrDefault(doce.getId(), BigDecimal.ZERO);
 
-            TextField quantidade = new TextField(String.valueOf(qAtual));
+            TextField quantidade = new TextField(qAtual.compareTo(BigDecimal.ZERO) == 0
+                    ? "0" : qAtual.stripTrailingZeros().toPlainString());
             quantidade.setPrefWidth(45);
             quantidade.setMaxWidth(45);
             quantidade.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-alignment: center; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #ffd1dc; -fx-padding: 2 4;");
@@ -166,19 +168,19 @@ public class TelaDoces {
 
             HBox linha = new HBox(10, new VBox(nome, preco), spacer, controle);
             linha.setPadding(new Insets(10));
-            atualizarCorLinha(linha, qAtual);
+            atualizarCorLinha(linha, qAtual.compareTo(BigDecimal.ZERO) > 0 ? 1 : 0);
 
             Runnable aplicarQuantidade = () -> {
                 try {
-                    int val = Integer.parseInt(quantidade.getText());
-                    if (val <= 0) {
+                    BigDecimal val = new BigDecimal(quantidade.getText());
+                    if (val.compareTo(BigDecimal.ZERO) <= 0) {
                         qtdLocal.remove(doce.getId());
                         produtosLocal.remove(doce.getId());
                     } else {
                         qtdLocal.put(doce.getId(), val);
                         produtosLocal.put(doce.getId(), doce);
                     }
-                    atualizarCorLinha(linha, val);
+                    atualizarCorLinha(linha, val.compareTo(BigDecimal.ZERO) > 0 ? 1 : 0);
                     atualizarTotal(totalLabel);
                 } catch (Exception ignored) {}
             };
@@ -189,25 +191,26 @@ public class TelaDoces {
             quantidade.setOnAction(e -> aplicarQuantidade.run());
 
             btnMais.setOnAction(e -> {
-                int q = qtdLocal.getOrDefault(doce.getId(), 0) + 1;
+                BigDecimal q = qtdLocal.getOrDefault(doce.getId(), BigDecimal.ZERO).add(BigDecimal.ONE);
                 qtdLocal.put(doce.getId(), q);
                 produtosLocal.put(doce.getId(), doce);
-                quantidade.setText(String.valueOf(q));
-                atualizarCorLinha(linha, q);
+                quantidade.setText(q.stripTrailingZeros().toPlainString());
+                atualizarCorLinha(linha, 1);
                 atualizarTotal(totalLabel);
             });
 
             btnMenos.setOnAction(e -> {
-                int q = qtdLocal.getOrDefault(doce.getId(), 0) - 1;
-                if (q <= 0) {
+                BigDecimal q = qtdLocal.getOrDefault(doce.getId(), BigDecimal.ZERO).subtract(BigDecimal.ONE);
+                if (q.compareTo(BigDecimal.ZERO) <= 0) {
                     qtdLocal.remove(doce.getId());
                     produtosLocal.remove(doce.getId());
-                    q = 0;
+                    quantidade.setText("0");
+                    atualizarCorLinha(linha, 0);
                 } else {
                     qtdLocal.put(doce.getId(), q);
+                    quantidade.setText(q.stripTrailingZeros().toPlainString());
+                    atualizarCorLinha(linha, 1);
                 }
-                quantidade.setText(String.valueOf(q));
-                atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);
             });
 
@@ -240,10 +243,11 @@ public class TelaDoces {
         for (var entry : qtdLocal.entrySet()) {
             Produto p = produtosLocal.get(entry.getKey());
             if (p instanceof ProdutoSimples ps)
-                total = total.add(ps.getPreco().multiply(BigDecimal.valueOf(entry.getValue())));
+                total = total.add(ps.getPreco().multiply(entry.getValue()));
         }
-        int qtd = qtdLocal.values().stream().mapToInt(i -> i).sum();
-        totalLabel.setText("Itens: " + qtd + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
+        BigDecimal totalQtd = qtdLocal.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        totalLabel.setText("Itens: " + totalQtd.stripTrailingZeros().toPlainString()
+                + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
     }
 
     private void mostrarPopupCarrinho() {
@@ -263,7 +267,7 @@ public class TelaDoces {
 
         for (var entry : carrinhoService.getItens().entrySet()) {
             Long id = entry.getKey();
-            BigDecimal q = BigDecimal.valueOf(entry.getValue());
+            BigDecimal q = entry.getValue();
             Produto p = carrinhoService.getProduto(id);
 
             BigDecimal subtotal = BigDecimal.ZERO;
@@ -272,7 +276,8 @@ public class TelaDoces {
 
             total = total.add(subtotal);
             lista.getChildren().add(new Label(
-                    p.getNome() + " x" + q.intValue() + " - R$ " + subtotal.setScale(2, RoundingMode.HALF_UP)
+                    p.getNome() + " x" + q.stripTrailingZeros().toPlainString()
+                            + " - R$ " + subtotal.setScale(2, RoundingMode.HALF_UP)
             ));
         }
 

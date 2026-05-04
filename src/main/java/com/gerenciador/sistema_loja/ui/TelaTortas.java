@@ -100,8 +100,7 @@ public class TelaTortas {
         Button btnCarrinho = BotaoFactory.primario("Adicionar ao carrinho");
         btnCarrinho.setOnAction(e -> {
             for (var entry : qtdLocal.entrySet()) {
-                // guarda como inteiro (qtd * 2) para manter compatibilidade com o carrinho
-                carrinhoService.getItens().put(entry.getKey(), entry.getValue().multiply(BigDecimal.TWO).intValue());
+                carrinhoService.getItens().put(entry.getKey(), entry.getValue());
                 carrinhoService.getProdutos().put(entry.getKey(), produtosLocal.get(entry.getKey()));
             }
             mostrarPopupCarrinho();
@@ -246,9 +245,7 @@ public class TelaTortas {
             if (p instanceof Torta t)
                 total = total.add(t.getPrecoPorKg().multiply(entry.getValue()));
         }
-        // soma de qtd para exibir "itens" (usa o valor real, não *2)
-        BigDecimal totalQtd = qtdLocal.values().stream()
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalQtd = qtdLocal.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         totalLabel.setText("Itens: " + totalQtd.stripTrailingZeros().toPlainString()
                 + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
     }
@@ -269,7 +266,7 @@ public class TelaTortas {
         BigDecimal total = BigDecimal.ZERO;
 
         for (var entry : qtdLocal.entrySet()) {
-            Produto p = produtosLocal.get(entry.getKey());
+            Produto    p   = produtosLocal.get(entry.getKey());
             BigDecimal qtd = entry.getValue();
 
             BigDecimal sub = BigDecimal.ZERO;
@@ -285,7 +282,7 @@ public class TelaTortas {
         Label totalLabel = new Label("Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
         totalLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
 
-        Button ok = BotaoFactory.primario("Confirmar");
+        Button ok      = BotaoFactory.primario("Confirmar");
         Button cancelar = BotaoFactory.secundario("Cancelar");
 
         HBox botoes = new HBox(10, ok, cancelar);
@@ -301,13 +298,9 @@ public class TelaTortas {
 
         rootPrincipal.getChildren().add(overlay);
 
-        popup.setScaleX(0);
-        popup.setScaleY(0);
-
+        popup.setScaleX(0); popup.setScaleY(0);
         ScaleTransition anim = new ScaleTransition(Duration.millis(200), popup);
-        anim.setToX(1);
-        anim.setToY(1);
-        anim.play();
+        anim.setToX(1); anim.setToY(1); anim.play();
 
         ok.setOnAction(e -> {
             rootPrincipal.getChildren().remove(overlay);

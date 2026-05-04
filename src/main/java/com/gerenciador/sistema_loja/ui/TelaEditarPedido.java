@@ -42,17 +42,17 @@ public class TelaEditarPedido {
     private static final DateTimeFormatter FMT_DIA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private Map<Long, Integer> itensEditaveis = new LinkedHashMap<>();
-    private Map<Long, Produto> produtosMap = new LinkedHashMap<>();
-    private Map<Long, BigDecimal> precosMap = new LinkedHashMap<>();
+    private Map<Long, Produto> produtosMap    = new LinkedHashMap<>();
+    private Map<Long, BigDecimal> precosMap   = new LinkedHashMap<>();
 
     public TelaEditarPedido(StackPane rootPrincipal, ProdutoService produtoService,
                             CarrinhoService carrinhoService, PedidoService pedidoService,
                             Pedido pedido, PedidoPdfService pedidoPdfService) {
-        this.rootPrincipal   = rootPrincipal;
-        this.produtoService  = produtoService;
-        this.carrinhoService = carrinhoService;
-        this.pedidoService   = pedidoService;
-        this.pedido          = pedido;
+        this.rootPrincipal    = rootPrincipal;
+        this.produtoService   = produtoService;
+        this.carrinhoService  = carrinhoService;
+        this.pedidoService    = pedidoService;
+        this.pedido           = pedido;
         this.pedidoPdfService = pedidoPdfService;
 
         if (pedido.getItens() != null) {
@@ -86,14 +86,13 @@ public class TelaEditarPedido {
         topo.setPadding(new Insets(15, 15, 0, 15));
         root.setTop(topo);
 
-        // ── ESTILOS COMPARTILHADOS ─────────────────────────
         String estiloLabel = "-fx-font-size: 11px; -fx-text-fill: #aaa; -fx-font-weight: bold;";
         String estiloValor = "-fx-font-size: 13px; -fx-text-fill: #555;";
         String estiloField = """
             -fx-background-radius: 8; -fx-border-radius: 8;
             -fx-border-color: #ffd1dc; -fx-padding: 8 12; -fx-font-size: 13px;
         """;
-        String estiloCard  = """
+        String estiloCard = """
             -fx-background-color: white;
             -fx-background-radius: 15;
             -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 12, 0, 0, 4);
@@ -159,13 +158,31 @@ public class TelaEditarPedido {
         campoObs.setPrefRowCount(3);
         campoObs.setStyle(estiloField);
 
-        Label lblDescontoTitulo = new Label("DESCONTO (R$)");
+        // ── DESCONTO R$ e % ───────────────────────────────
+        Label lblDescontoTitulo = new Label("DESCONTO");
         lblDescontoTitulo.setStyle(estiloLabel);
-        TextField campoDesconto = new TextField(
+
+        Label lblRS  = new Label("R$");
+        lblRS.setStyle("-fx-font-size: 11px; -fx-text-fill: #aaa;");
+        Label lblPct = new Label("%");
+        lblPct.setStyle("-fx-font-size: 11px; -fx-text-fill: #aaa;");
+
+        TextField campoDescontoRS = new TextField(
                 pedido.getDesconto() != null
                         ? pedido.getDesconto().setScale(2, RoundingMode.HALF_UP).toString()
                         : "0.00");
-        campoDesconto.setStyle(estiloField);
+        campoDescontoRS.setPrefWidth(100);
+        campoDescontoRS.setStyle(estiloField);
+
+        TextField campoDescontoPct = new TextField(
+                pedido.getDescontoPorcentagem() != null
+                        ? pedido.getDescontoPorcentagem().setScale(2, RoundingMode.HALF_UP).toString()
+                        : "0.00");
+        campoDescontoPct.setPrefWidth(80);
+        campoDescontoPct.setStyle(estiloField);
+
+        HBox camposDesconto = new HBox(8, lblRS, campoDescontoRS, lblPct, campoDescontoPct);
+        camposDesconto.setAlignment(Pos.CENTER_LEFT);
 
         Label lblTotalTitulo = new Label("TOTAL (R$)");
         lblTotalTitulo.setStyle(estiloLabel);
@@ -175,18 +192,55 @@ public class TelaEditarPedido {
                         : "0.00");
         campoTotal.setStyle(estiloField);
 
+        // Sincronização R$ ↔ %
+        boolean[] atualizandoDesconto = { false };
+
+        campoDescontoRS.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+            if (!isNowFocused && !atualizandoDesconto[0]) {
+                atualizandoDesconto[0] = true;
+                try {
+                    BigDecimal total = calcularSubtotal();
+                    BigDecimal rs    = new BigDecimal(campoDescontoRS.getText().replace(",", "."));
+                    if (total.compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal pct = rs.multiply(new BigDecimal("100"))
+                                .divide(total, 2, RoundingMode.HALF_UP);
+                        campoDescontoPct.setText(pct.toPlainString());
+                    }
+                    recalcularTotalComDesconto(campoTotal, rs);
+                } catch (Exception ignored) {}
+                atualizandoDesconto[0] = false;
+            }
+        });
+        campoDescontoRS.setOnAction(e -> campoDescontoRS.getParent().requestFocus());
+
+        campoDescontoPct.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+            if (!isNowFocused && !atualizandoDesconto[0]) {
+                atualizandoDesconto[0] = true;
+                try {
+                    BigDecimal total = calcularSubtotal();
+                    BigDecimal pct   = new BigDecimal(campoDescontoPct.getText().replace(",", "."));
+                    BigDecimal rs    = total.multiply(pct)
+                            .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    campoDescontoRS.setText(rs.toPlainString());
+                    recalcularTotalComDesconto(campoTotal, rs);
+                } catch (Exception ignored) {}
+                atualizandoDesconto[0] = false;
+            }
+        });
+        campoDescontoPct.setOnAction(e -> campoDescontoPct.getParent().requestFocus());
+
         cardInfo.getChildren().addAll(
                 lblDataTitulo, lblDataValor,
                 new Separator(),
                 lblNomeTitulo, campoNome,
                 lblDataEntregaTitulo, campoDataBox,
                 lblObsTitulo, campoObs,
-                lblDescontoTitulo, campoDesconto,
+                lblDescontoTitulo, camposDesconto,
                 lblTotalTitulo, campoTotal
         );
 
         // ══════════════════════════════════════════════════
-        // CARD 2 — ITENS DO PEDIDO (LARGURA AUMENTADA)
+        // CARD 2 — ITENS DO PEDIDO
         // ══════════════════════════════════════════════════
         VBox cardItens = new VBox(14);
         cardItens.setPadding(new Insets(25));
@@ -220,9 +274,6 @@ public class TelaEditarPedido {
 
         cardItens.getChildren().addAll(lblItensTitulo, scrollItens, btnAdicionarItem);
 
-        // ══════════════════════════════════════════════════
-        // DOIS CARDS LADO A LADO, CENTRALIZADOS
-        // ══════════════════════════════════════════════════
         HBox duosCards = new HBox(20, cardInfo, cardItens);
         duosCards.setAlignment(Pos.TOP_CENTER);
         duosCards.setPadding(new Insets(15));
@@ -234,10 +285,9 @@ public class TelaEditarPedido {
             -fx-background: #ffe4ec; -fx-background-color: #ffe4ec;
             -fx-focus-color: transparent; -fx-faint-focus-color: transparent;
         """);
-
         root.setCenter(scrollExterno);
 
-        // ── FOOTER FIXO ───────────────────────────────────
+        // ── FOOTER ────────────────────────────────────────
         Button btnConfirmar = BotaoFactory.primario("Confirmar");
         Button btnCancelar  = BotaoFactory.secundario("Cancelar");
 
@@ -251,24 +301,28 @@ public class TelaEditarPedido {
                     try {
                         pedido.setNomeCliente(campoNome.getText().trim());
                         pedido.setDataEntrega(dataEntregaSelecionada[0]);
-                        pedido.setDesconto(new BigDecimal(
-                                campoDesconto.getText().replace(",", ".")));
                         pedido.setObservacao(campoObs.getText().trim());
+
+                        BigDecimal descontoRS = new BigDecimal(
+                                campoDescontoRS.getText().replace(",", "."));
+                        BigDecimal descontoPct = new BigDecimal(
+                                campoDescontoPct.getText().replace(",", "."));
+                        pedido.setDesconto(descontoRS);
+                        pedido.setDescontoPorcentagem(descontoPct);
                         pedido.setTotal(new BigDecimal(
                                 campoTotal.getText().replace(",", ".")));
 
                         List<ItemPedido> novosItens = new ArrayList<>();
                         for (Map.Entry<Long, Integer> entry : new LinkedHashMap<>(itensEditaveis).entrySet()) {
-                            Long produtoId = entry.getKey();
-                            Produto p   = produtosMap.get(produtoId);
-                            int     qtd = entry.getValue();
-
+                            Long    produtoId = entry.getKey();
+                            Produto p         = produtosMap.get(produtoId);
+                            int     qtd       = entry.getValue();
                             BigDecimal precoUnit = precosMap.getOrDefault(produtoId, BigDecimal.ZERO);
 
                             ItemPedido itemExistente = pedido.getItens() == null ? null :
                                     pedido.getItens().stream()
-                                            .filter(it -> it.getProduto().getId().equals(p.getId()))
-                                            .findFirst().orElse(null);
+                                    .filter(it -> it.getProduto().getId().equals(p.getId()))
+                                    .findFirst().orElse(null);
 
                             if (itemExistente != null) {
                                 itemExistente.setQuantidade(BigDecimal.valueOf(qtd));
@@ -283,8 +337,11 @@ public class TelaEditarPedido {
                                 novosItens.add(novo);
                             }
                         }
-                        pedido.getItens().clear();
-                        pedido.getItens().addAll(novosItens);
+
+                        if (pedido.getItens() != null) {
+                            pedido.getItens().clear();
+                            pedido.getItens().addAll(novosItens);
+                        }
 
                         pedidoService.salvarSemRecalcular(pedido);
 
@@ -330,9 +387,27 @@ public class TelaEditarPedido {
             -fx-border-color: #e0e0e0 transparent transparent transparent;
             -fx-border-width: 1 0 0 0;
         """);
-
         root.setBottom(footer);
+
         return root;
+    }
+
+    // ── CALCULA SUBTOTAL DOS ITENS EDITÁVEIS ──────────────
+    private BigDecimal calcularSubtotal() {
+        BigDecimal total = BigDecimal.ZERO;
+        for (Map.Entry<Long, Integer> entry : itensEditaveis.entrySet()) {
+            BigDecimal pu = precosMap.getOrDefault(entry.getKey(), BigDecimal.ZERO);
+            total = total.add(pu.multiply(BigDecimal.valueOf(entry.getValue())));
+        }
+        return total;
+    }
+
+    // ── RECALCULA TOTAL APLICANDO DESCONTO ────────────────
+    private void recalcularTotalComDesconto(TextField campoTotal, BigDecimal descontoRS) {
+        BigDecimal subtotal = calcularSubtotal();
+        BigDecimal total    = subtotal.subtract(descontoRS).max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+        campoTotal.setText(total.toPlainString());
     }
 
     // ── CONSTRÓI LINHAS DE ITENS ──────────────────────────
@@ -341,20 +416,17 @@ public class TelaEditarPedido {
         listaItens.getChildren().clear();
 
         for (Map.Entry<Long, Integer> entry : new LinkedHashMap<>(itensEditaveis).entrySet()) {
-            Long produtoId = entry.getKey();
-            Produto p   = produtosMap.get(produtoId);
-            int     qtd = entry.getValue();
-
+            Long    produtoId = entry.getKey();
+            Produto p         = produtosMap.get(produtoId);
+            int     qtd       = entry.getValue();
             BigDecimal precoUnit = precosMap.getOrDefault(produtoId, BigDecimal.ZERO);
-
-            BigDecimal subtotal = precoUnit.multiply(BigDecimal.valueOf(qtd))
+            BigDecimal subtotal  = precoUnit.multiply(BigDecimal.valueOf(qtd))
                     .setScale(2, RoundingMode.HALF_UP);
 
             Label lblNome = new Label(p.getNome());
             lblNome.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #333;");
             lblNome.setWrapText(true);
 
-            // campo editável do preço unitário
             Label lblUnitTitulo = new Label("Unit. R$");
             lblUnitTitulo.setStyle("-fx-font-size: 11px; -fx-text-fill: #aaa;");
 
@@ -369,7 +441,6 @@ public class TelaEditarPedido {
             Label lblSub = new Label("R$ " + subtotal);
             lblSub.setStyle("-fx-font-size: 12px; -fx-text-fill: #888;");
 
-            // campo editável de quantidade
             TextField campoQtd = new TextField(String.valueOf(qtd));
             campoQtd.setPrefWidth(50);
             campoQtd.setMaxWidth(50);
@@ -381,53 +452,62 @@ public class TelaEditarPedido {
 
             final Long produtoIdRef = produtoId;
 
-            // Listener para preço
-            campoPrecoUnit.textProperty().addListener((obs, o, n) -> {
+            // Aplica preço ao sair do foco ou pressionar Enter
+            Runnable aplicarPreco = () -> {
                 try {
-                    BigDecimal novoPreco = new BigDecimal(n.replace(",", "."));
+                    BigDecimal novoPreco = new BigDecimal(campoPrecoUnit.getText().replace(",", "."));
                     precosMap.put(produtoIdRef, novoPreco);
-                    BigDecimal novoSub = novoPreco
-                            .multiply(BigDecimal.valueOf(Integer.parseInt(campoQtd.getText())))
+                    int qAtual = itensEditaveis.getOrDefault(produtoIdRef, 0);
+                    BigDecimal novoSub = novoPreco.multiply(BigDecimal.valueOf(qAtual))
                             .setScale(2, RoundingMode.HALF_UP);
                     lblSub.setText("R$ " + novoSub);
                     campoPrecoUnit.setStyle("""
                         -fx-background-radius: 6; -fx-border-radius: 6;
                         -fx-border-color: #ff4d6d; -fx-padding: 4 6; -fx-font-size: 12px;
-                    """);
-                    recalcularTotal(campoTotal);
-                } catch (Exception ignored) {
-                    campoPrecoUnit.setStyle("""
-                        -fx-background-radius: 6; -fx-border-radius: 6;
-                        -fx-border-color: #ffd1dc; -fx-padding: 4 6; -fx-font-size: 12px;
-                    """);
-                }
-            });
-
-            // Listener para quantidade
-            campoQtd.textProperty().addListener((obs, o, n) -> {
-                if (!n.matches("\\d*")) {
-                    campoQtd.setText(o);
-                    return;
-                }
-                try {
-                    int novaQtd = n.isEmpty() ? 0 : Integer.parseInt(n);
-                    if (novaQtd == 0) {
-                        itensEditaveis.remove(produtoIdRef);
-                    } else {
-                        itensEditaveis.put(produtoIdRef, novaQtd);
-                    }
-                    BigDecimal novoSub = precosMap.get(produtoIdRef)
-                            .multiply(BigDecimal.valueOf(novaQtd))
-                            .setScale(2, RoundingMode.HALF_UP);
-                    lblSub.setText("R$ " + novoSub);
-                    campoQtd.setStyle("""
-                        -fx-background-radius: 6; -fx-border-radius: 6;
-                        -fx-border-color: #ff4d6d; -fx-padding: 4 6; -fx-font-size: 12px;
-                        -fx-alignment: center;
                     """);
                     recalcularTotal(campoTotal);
                 } catch (Exception ignored) {}
+            };
+
+            campoPrecoUnit.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+                if (!isNowFocused) aplicarPreco.run();
             });
+            campoPrecoUnit.setOnAction(e -> aplicarPreco.run());
+
+            // Aplica quantidade ao sair do foco ou pressionar Enter
+            Runnable aplicarQtd = () -> {
+                try {
+                    String texto = campoQtd.getText();
+                    if (!texto.matches("\\d*")) return;
+                    int novaQtd = texto.isEmpty() ? 0 : Integer.parseInt(texto);
+                    if (novaQtd == 0) {
+                        itensEditaveis.remove(produtoIdRef);
+                        // Remove também da lista real do pedido
+                        if (pedido.getItens() != null) {
+                            pedido.getItens().removeIf(
+                                    it -> it.getProduto().getId().equals(produtoIdRef));
+                        }
+                        atualizarItensRef[0].run();
+                    } else {
+                        itensEditaveis.put(produtoIdRef, novaQtd);
+                        BigDecimal pu     = precosMap.getOrDefault(produtoIdRef, BigDecimal.ZERO);
+                        BigDecimal novoSub = pu.multiply(BigDecimal.valueOf(novaQtd))
+                                .setScale(2, RoundingMode.HALF_UP);
+                        lblSub.setText("R$ " + novoSub);
+                        campoQtd.setStyle("""
+                            -fx-background-radius: 6; -fx-border-radius: 6;
+                            -fx-border-color: #ff4d6d; -fx-padding: 4 6; -fx-font-size: 12px;
+                            -fx-alignment: center;
+                        """);
+                    }
+                    recalcularTotal(campoTotal);
+                } catch (Exception ignored) {}
+            };
+
+            campoQtd.focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+                if (!isNowFocused) aplicarQtd.run();
+            });
+            campoQtd.setOnAction(e -> aplicarQtd.run());
 
             HBox linhaPreco = new HBox(6, lblUnitTitulo, campoPrecoUnit, new Label("Qtd:"), campoQtd, lblSub);
             linhaPreco.setAlignment(Pos.CENTER_LEFT);
@@ -458,6 +538,11 @@ public class TelaEditarPedido {
                 itensEditaveis.remove(produtoIdRef);
                 precosMap.remove(produtoIdRef);
                 produtosMap.remove(produtoIdRef);
+                // Remove também da lista real do pedido
+                if (pedido.getItens() != null) {
+                    pedido.getItens().removeIf(
+                            it -> it.getProduto().getId().equals(produtoIdRef));
+                }
                 atualizarItensRef[0].run();
                 recalcularTotal(campoTotal);
             });
@@ -472,15 +557,10 @@ public class TelaEditarPedido {
         }
     }
 
-    // ── RECALCULA TOTAL ───────────────────────────────────
+    // ── RECALCULA TOTAL SEM DESCONTO ──────────────────────
     private void recalcularTotal(TextField campoTotal) {
-        BigDecimal total = BigDecimal.ZERO;
-        for (Map.Entry<Long, Integer> entry : new LinkedHashMap<>(itensEditaveis).entrySet()) {
-            Long produtoId = entry.getKey();
-            BigDecimal pu = precosMap.getOrDefault(produtoId, BigDecimal.ZERO);
-            total = total.add(pu.multiply(BigDecimal.valueOf(entry.getValue())));
-        }
-        campoTotal.setText(total.setScale(2, RoundingMode.HALF_UP).toString());
+        BigDecimal total = calcularSubtotal().setScale(2, RoundingMode.HALF_UP);
+        campoTotal.setText(total.toPlainString());
     }
 
     // ── POPUP ADICIONAR ITEM ──────────────────────────────
@@ -539,7 +619,7 @@ public class TelaEditarPedido {
         """);
         popup.setCenter(scrollLista);
 
-        String[] filtroAtual = {"TODOS"};
+        String[] filtroAtual = { "TODOS" };
 
         Runnable[] construirListaRef = new Runnable[1];
         construirListaRef[0] = () -> {
@@ -553,11 +633,10 @@ public class TelaEditarPedido {
             };
 
             String busca = campoBusca.getText().toLowerCase();
-            if (!busca.isBlank()) {
+            if (!busca.isBlank())
                 produtos = produtos.stream()
                         .filter(p -> p.getNome().toLowerCase().contains(busca))
                         .toList();
-            }
 
             for (Produto p : produtos) {
                 BigDecimal pu = BigDecimal.ZERO;
@@ -584,7 +663,7 @@ public class TelaEditarPedido {
                     try {
                         int val = Integer.parseInt(n);
                         if (val == 0) qtdTemp.remove(p);
-                        else qtdTemp.put(p, val);
+                        else          qtdTemp.put(p, val);
                         atualizarCorLinhaPopup(linhaRef[0], val);
                     } catch (Exception ignored) {}
                 });
@@ -595,7 +674,6 @@ public class TelaEditarPedido {
                     -fx-background-radius: 15; -fx-padding: 4 10;
                     -fx-font-weight: bold; -fx-cursor: hand;
                 """);
-
                 Button bMais = new Button("+");
                 bMais.setStyle("""
                     -fx-background-color: #ff4d6d; -fx-text-fill: white;
@@ -673,7 +751,6 @@ public class TelaEditarPedido {
             for (Map.Entry<Produto, Integer> entry : qtdTemp.entrySet()) {
                 if (entry.getValue() > 0) {
                     Long prodId = entry.getKey().getId();
-                    // Se já existe, soma as quantidades
                     if (itensEditaveis.containsKey(prodId)) {
                         itensEditaveis.put(prodId, itensEditaveis.get(prodId) + entry.getValue());
                     } else {
@@ -681,11 +758,8 @@ public class TelaEditarPedido {
                         produtosMap.put(prodId, entry.getKey());
 
                         BigDecimal precoUnitario = BigDecimal.ZERO;
-                        if (entry.getKey() instanceof ProdutoSimples ps) {
-                            precoUnitario = ps.getPreco();
-                        } else if (entry.getKey() instanceof Torta t) {
-                            precoUnitario = t.getPrecoPorKg();
-                        }
+                        if (entry.getKey() instanceof ProdutoSimples ps) precoUnitario = ps.getPreco();
+                        else if (entry.getKey() instanceof Torta t)      precoUnitario = t.getPrecoPorKg();
                         precosMap.put(prodId, precoUnitario);
                     }
                 }
@@ -740,16 +814,14 @@ public class TelaEditarPedido {
         navMes.setAlignment(Pos.CENTER);
 
         GridPane gridDias = new GridPane();
-        gridDias.setHgap(4);
-        gridDias.setVgap(4);
+        gridDias.setHgap(4); gridDias.setVgap(4);
         gridDias.setAlignment(Pos.CENTER);
 
-        String[] diasSemana = {"Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"};
+        String[] diasSemana = {"Dom","Seg","Ter","Qua","Qui","Sex","Sáb"};
         for (int i = 0; i < 7; i++) {
             Label lblDia = new Label(diasSemana[i]);
             lblDia.setStyle("-fx-font-size: 10px; -fx-text-fill: #aaa; -fx-font-weight: bold;");
-            lblDia.setMinWidth(32);
-            lblDia.setAlignment(Pos.CENTER);
+            lblDia.setMinWidth(32); lblDia.setAlignment(Pos.CENTER);
             gridDias.add(lblDia, i, 0);
         }
 
@@ -779,13 +851,11 @@ public class TelaEditarPedido {
 
             lblMesAno.setText(
                     primeiro.getMonth().getDisplayName(java.time.format.TextStyle.FULL,
-                                    new java.util.Locale("pt", "BR"))
-                            .substring(0, 1).toUpperCase() +
+                                    new java.util.Locale("pt","BR"))
+                            .substring(0,1).toUpperCase() +
                             primeiro.getMonth().getDisplayName(java.time.format.TextStyle.FULL,
-                                            new java.util.Locale("pt", "BR"))
-                                    .substring(1) +
-                            " " + primeiro.getYear()
-            );
+                                    new java.util.Locale("pt","BR")).substring(1) +
+                            " " + primeiro.getYear());
 
             int col = diaSemanaInicio, row = 1;
             for (int dia = 1; dia <= primeiro.lengthOfMonth(); dia++) {
@@ -795,16 +865,14 @@ public class TelaEditarPedido {
                         && dataEntregaSelecionada[0].equals(dataAtual);
                 boolean   hoje        = dataAtual.equals(LocalDate.now());
 
-                btnDia.setMinWidth(32);
-                btnDia.setMinHeight(32);
+                btnDia.setMinWidth(32); btnDia.setMinHeight(32);
 
-                if (selecionado) {
+                if (selecionado)
                     btnDia.setStyle("-fx-background-color: #ff4d6d; -fx-text-fill: white; -fx-background-radius: 20; -fx-cursor: hand; -fx-font-weight: bold;");
-                } else if (hoje) {
+                else if (hoje)
                     btnDia.setStyle("-fx-background-color: #ffccd5; -fx-text-fill: #ff4d6d; -fx-background-radius: 20; -fx-cursor: hand; -fx-font-weight: bold;");
-                } else {
+                else
                     btnDia.setStyle("-fx-background-color: transparent; -fx-text-fill: #333; -fx-background-radius: 20; -fx-cursor: hand;");
-                }
 
                 btnDia.setOnAction(ev -> {
                     dataEntregaSelecionada[0] = dataAtual;
@@ -813,13 +881,11 @@ public class TelaEditarPedido {
                 });
 
                 gridDias.add(btnDia, col, row);
-                col++;
-                if (col == 7) { col = 0; row++; }
+                col++; if (col == 7) { col = 0; row++; }
             }
         };
 
         renderRef[0].run();
-
         btnAnterior.setOnAction(ev -> { mesAtual[0] = mesAtual[0].minusMonths(1); renderRef[0].run(); });
         btnProximo.setOnAction(ev  -> { mesAtual[0] = mesAtual[0].plusMonths(1);  renderRef[0].run(); });
 
@@ -833,7 +899,6 @@ public class TelaEditarPedido {
         });
     }
 
-    // ── HELPER: toggle button de filtro ──────────────────
     private ToggleButton criarFiltroBtn(String texto, ToggleGroup grupo) {
         ToggleButton btn = new ToggleButton(texto);
         btn.setToggleGroup(grupo);
@@ -854,7 +919,6 @@ public class TelaEditarPedido {
         return btn;
     }
 
-    // ── HELPER: cor de linha no popup de adicionar ────────
     private void atualizarCorLinhaPopup(HBox linha, int qtd) {
         if (qtd > 0) {
             linha.setStyle("""

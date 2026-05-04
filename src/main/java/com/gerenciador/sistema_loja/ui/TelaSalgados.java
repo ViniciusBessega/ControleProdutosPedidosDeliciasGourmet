@@ -32,10 +32,11 @@ public class TelaSalgados {
     private PedidoService pedidoService;
     private PedidoPdfService pedidoPdfService;
 
-    private final Map<Long, Integer> qtdLocal = new HashMap<>();
+    private final Map<Long, BigDecimal> qtdLocal = new HashMap<>();
     private final Map<Long, Produto> produtosLocal = new HashMap<>();
 
-    public TelaSalgados(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService, PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
+    public TelaSalgados(StackPane rootPrincipal, ProdutoService service, CarrinhoService carrinhoService,
+                        PedidoService pedidoService, PedidoPdfService pedidoPdfService) {
         this.rootPrincipal = rootPrincipal;
         this.service = service;
         this.carrinhoService = carrinhoService;
@@ -136,9 +137,10 @@ public class TelaSalgados {
 
             Label preco = new Label("R$ " + s.getPreco());
 
-            int qAtual = qtdLocal.getOrDefault(s.getId(), 0);
+            BigDecimal qAtual = qtdLocal.getOrDefault(s.getId(), BigDecimal.ZERO);
 
-            TextField quantidade = new TextField(String.valueOf(qAtual));
+            TextField quantidade = new TextField(qAtual.compareTo(BigDecimal.ZERO) == 0
+                    ? "0" : qAtual.stripTrailingZeros().toPlainString());
             quantidade.setPrefWidth(45);
             quantidade.setMaxWidth(45);
             quantidade.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-alignment: center; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #ffd1dc; -fx-padding: 2 4;");
@@ -148,7 +150,7 @@ public class TelaSalgados {
             });
 
             Button menos = BotaoFactory.secundario("-");
-            Button mais = BotaoFactory.primario("+");
+            Button mais  = BotaoFactory.primario("+");
 
             HBox controle = new HBox(5, menos, quantidade, mais);
             controle.setAlignment(Pos.CENTER);
@@ -159,19 +161,19 @@ public class TelaSalgados {
             HBox linha = new HBox(10, new VBox(nome, preco), spacer, controle);
             linha.setPadding(new Insets(10));
             linha.setAlignment(Pos.CENTER_LEFT);
-            atualizarCorLinha(linha, qAtual);
+            atualizarCorLinha(linha, qAtual.compareTo(BigDecimal.ZERO) > 0 ? 1 : 0);
 
             Runnable aplicarQuantidade = () -> {
                 try {
-                    int val = Integer.parseInt(quantidade.getText());
-                    if (val <= 0) {
+                    BigDecimal val = new BigDecimal(quantidade.getText());
+                    if (val.compareTo(BigDecimal.ZERO) <= 0) {
                         qtdLocal.remove(s.getId());
                         produtosLocal.remove(s.getId());
                     } else {
                         qtdLocal.put(s.getId(), val);
                         produtosLocal.put(s.getId(), s);
                     }
-                    atualizarCorLinha(linha, val);
+                    atualizarCorLinha(linha, val.compareTo(BigDecimal.ZERO) > 0 ? 1 : 0);
                     atualizarTotal(totalLabel);
                 } catch (Exception ignored) {}
             };
@@ -182,25 +184,26 @@ public class TelaSalgados {
             quantidade.setOnAction(e -> aplicarQuantidade.run());
 
             mais.setOnAction(e -> {
-                int q = qtdLocal.getOrDefault(s.getId(), 0) + 1;
+                BigDecimal q = qtdLocal.getOrDefault(s.getId(), BigDecimal.ZERO).add(BigDecimal.ONE);
                 qtdLocal.put(s.getId(), q);
                 produtosLocal.put(s.getId(), s);
-                quantidade.setText(String.valueOf(q));
-                atualizarCorLinha(linha, q);
+                quantidade.setText(q.stripTrailingZeros().toPlainString());
+                atualizarCorLinha(linha, 1);
                 atualizarTotal(totalLabel);
             });
 
             menos.setOnAction(e -> {
-                int q = qtdLocal.getOrDefault(s.getId(), 0) - 1;
-                if (q <= 0) {
+                BigDecimal q = qtdLocal.getOrDefault(s.getId(), BigDecimal.ZERO).subtract(BigDecimal.ONE);
+                if (q.compareTo(BigDecimal.ZERO) <= 0) {
                     qtdLocal.remove(s.getId());
                     produtosLocal.remove(s.getId());
-                    q = 0;
+                    quantidade.setText("0");
+                    atualizarCorLinha(linha, 0);
                 } else {
                     qtdLocal.put(s.getId(), q);
+                    quantidade.setText(q.stripTrailingZeros().toPlainString());
+                    atualizarCorLinha(linha, 1);
                 }
-                quantidade.setText(String.valueOf(q));
-                atualizarCorLinha(linha, q);
                 atualizarTotal(totalLabel);
             });
 
@@ -233,10 +236,11 @@ public class TelaSalgados {
         for (var entry : qtdLocal.entrySet()) {
             Produto p = produtosLocal.get(entry.getKey());
             if (p instanceof ProdutoSimples ps)
-                total = total.add(ps.getPreco().multiply(BigDecimal.valueOf(entry.getValue())));
+                total = total.add(ps.getPreco().multiply(entry.getValue()));
         }
-        int qtd = qtdLocal.values().stream().mapToInt(i -> i).sum();
-        totalLabel.setText("Itens: " + qtd + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
+        BigDecimal totalQtd = qtdLocal.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        totalLabel.setText("Itens: " + totalQtd.stripTrailingZeros().toPlainString()
+                + "   Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
     }
 
     private void mostrarPopupCarrinho() {
@@ -255,24 +259,25 @@ public class TelaSalgados {
         BigDecimal total = BigDecimal.ZERO;
 
         for (var entry : carrinhoService.getItens().entrySet()) {
-            Long id = entry.getKey();
-            BigDecimal q = BigDecimal.valueOf(entry.getValue());
-            Produto p = carrinhoService.getProduto(id);
+            Long id       = entry.getKey();
+            BigDecimal q  = entry.getValue();
+            Produto p     = carrinhoService.getProduto(id);
 
             BigDecimal sub = BigDecimal.ZERO;
             if (p instanceof ProdutoSimples ps) sub = ps.getPreco().multiply(q);
-            else if (p instanceof Torta t) sub = t.getPrecoPorKg().multiply(q);
+            else if (p instanceof Torta t)      sub = t.getPrecoPorKg().multiply(q);
 
             total = total.add(sub);
             lista.getChildren().add(new Label(
-                    p.getNome() + " x" + entry.getValue() + " - R$ " + sub.setScale(2, RoundingMode.HALF_UP)
+                    p.getNome() + " x" + q.stripTrailingZeros().toPlainString()
+                            + " - R$ " + sub.setScale(2, RoundingMode.HALF_UP)
             ));
         }
 
         Label totalLabel = new Label("Total: R$ " + total.setScale(2, RoundingMode.HALF_UP));
         totalLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
 
-        Button ok = BotaoFactory.primario("Confirmar");
+        Button ok      = BotaoFactory.primario("Confirmar");
         Button cancelar = BotaoFactory.secundario("Cancelar");
 
         HBox botoes = new HBox(10, ok, cancelar);
@@ -288,13 +293,9 @@ public class TelaSalgados {
 
         rootPrincipal.getChildren().add(overlay);
 
-        popup.setScaleX(0);
-        popup.setScaleY(0);
-
+        popup.setScaleX(0); popup.setScaleY(0);
         ScaleTransition anim = new ScaleTransition(Duration.millis(200), popup);
-        anim.setToX(1);
-        anim.setToY(1);
-        anim.play();
+        anim.setToX(1); anim.setToY(1); anim.play();
 
         ok.setOnAction(e -> {
             rootPrincipal.getChildren().remove(overlay);

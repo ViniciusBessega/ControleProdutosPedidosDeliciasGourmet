@@ -29,7 +29,9 @@ public class Pedido {
     private BigDecimal total;
     private String observacao;
 
-    private BigDecimal desconto = BigDecimal.ZERO;;
+    private BigDecimal desconto = BigDecimal.ZERO;
+
+    private BigDecimal descontoPorcentagem = BigDecimal.ZERO;
 
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL)
     private List<ItemPedido> itens;

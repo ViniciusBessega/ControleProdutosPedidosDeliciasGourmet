@@ -4,32 +4,30 @@ import com.gerenciador.sistema_loja.model.Produto;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 
 @Service
 public class CarrinhoService {
 
-    // 🔥 chave = ID do produto
-    private Map<Long, Integer> itens = new HashMap<>();
-
-    // 🔥 guarda o produto real
+    private Map<Long, BigDecimal> itens = new HashMap<>();
     private Map<Long, Produto> produtos = new HashMap<>();
+
+    private String nomeCliente = "";
+    private LocalDate dataEntrega = null;
 
     public void adicionar(Produto p) {
         Long id = p.getId();
-
-        itens.put(id, itens.getOrDefault(id, 0) + 1);
+        itens.put(id, itens.getOrDefault(id, BigDecimal.ZERO).add(BigDecimal.ONE));
         produtos.put(id, p);
     }
 
     public void remover(Produto p) {
         Long id = p.getId();
-
         if (itens.containsKey(id)) {
-            int q = itens.get(id) - 1;
-
-            if (q <= 0) {
+            BigDecimal q = itens.get(id).subtract(BigDecimal.ONE);
+            if (q.compareTo(BigDecimal.ZERO) <= 0) {
                 itens.remove(id);
                 produtos.remove(id);
             } else {
@@ -38,13 +36,11 @@ public class CarrinhoService {
         }
     }
 
-    public Map<Long, Integer> getItens() {
-        return itens;
-    }
+    public Map<Long, BigDecimal> getItens() { return itens; }
 
-    public Produto getProduto(Long id) {
-        return produtos.get(id);
-    }
+    public Map<Long, Produto> getProdutos() { return produtos; }
+
+    public Produto getProduto(Long id) { return produtos.get(id); }
 
     public void limpar() {
         itens.clear();
@@ -53,16 +49,9 @@ public class CarrinhoService {
         dataEntrega = null;
     }
 
-    public Map<Long, Produto> getProdutos() {
-        return produtos;
-    }
-
-    private String nomeCliente = "";
-    private java.time.LocalDate dataEntrega = null;
-
     public String getNomeCliente() { return nomeCliente; }
     public void setNomeCliente(String nome) { this.nomeCliente = nome; }
 
-    public java.time.LocalDate getDataEntrega() { return dataEntrega; }
-    public void setDataEntrega(java.time.LocalDate data) { this.dataEntrega = data; }
+    public LocalDate getDataEntrega() { return dataEntrega; }
+    public void setDataEntrega(LocalDate data) { this.dataEntrega = data; }
 }
