@@ -264,18 +264,51 @@ public class PedidoPdfService {
             }
         }
 
-        // ── OBSERVAÇÃO ──────────────────────────────────────
-        if (pedido.getObservacao() != null && !pedido.getObservacao().isBlank()) {
-            cursor[0] -= 4f;
-            canvas.setLineDash(2, 2)
-                    .setLineWidth(0.4f)
-                    .setStrokeColor(com.itextpdf.kernel.colors.ColorConstants.GRAY)
-                    .moveTo(xInicio + padding, cursor[0])
-                    .lineTo(xInicio + largura - padding, cursor[0])
-                    .stroke();
-            cursor[0] -= 6f;
+        float larguraUtil = largura - (padding * 2) - 20f;
+        float fontSizeObs = 8f;
+        String obsCompleta = "Obs: " + pedido.getObservacao();
 
-            escreverLinha.apply("Obs: " + pedido.getObservacao(), 8f);
+        String[] linhasObs = obsCompleta.split("\n");
+        for (String linhaObs : linhasObs) {
+            StringBuilder atual = new StringBuilder();
+            for (String palavra : linhaObs.split(" ")) {
+
+                // se a palavra sozinha já é maior que a largura, quebra letra por letra
+                if (fontNormal.getWidth(palavra, fontSizeObs) > larguraUtil) {
+                    // descarrega o que tinha antes
+                    if (!atual.isEmpty()) {
+                        escreverLinha.apply(atual.toString(), fontSizeObs);
+                        atual = new StringBuilder();
+                    }
+                    // quebra a palavra longa em pedaços
+                    StringBuilder pedaco = new StringBuilder();
+                    for (char c : palavra.toCharArray()) {
+                        String testePedaco = pedaco.toString() + c;
+                        if (fontNormal.getWidth(testePedaco, fontSizeObs) <= larguraUtil) {
+                            pedaco.append(c);
+                        } else {
+                            escreverLinha.apply(pedaco.toString(), fontSizeObs);
+                            pedaco = new StringBuilder(String.valueOf(c));
+                        }
+                    }
+                    if (!pedaco.isEmpty()) {
+                        atual = pedaco; // continua na próxima palavra
+                    }
+                } else {
+                    String teste = atual.isEmpty() ? palavra : atual + " " + palavra;
+                    if (fontNormal.getWidth(teste, fontSizeObs) <= larguraUtil) {
+                        atual = new StringBuilder(teste);
+                    } else {
+                        if (!atual.isEmpty()) {
+                            escreverLinha.apply(atual.toString(), fontSizeObs);
+                        }
+                        atual = new StringBuilder(palavra);
+                    }
+                }
+            }
+            if (!atual.isEmpty()) {
+                escreverLinha.apply(atual.toString(), fontSizeObs);
+            }
         }
 
         // ── fecha só o PdfDocument, sem Document wrapper ────
